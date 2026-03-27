@@ -77,7 +77,6 @@ fn advice_impl(attribute: TokenStream, item: TokenStream, kind_str: &str) -> Tok
                     handler: |jp: &spring_boot::JoinPoint| #func_ident(jp),
                 }
             }
-            ()
         };
     };
 

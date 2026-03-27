@@ -16,3 +16,6 @@ proc-macro2 = "1.0"
 inventory = { workspace = true }
 spring-util = { path = "../spring-util" }
 spring-aop = { path = "../spring-aop" }
+
+[dev-dependencies]
+trybuild = "1"

@@ -1,7 +1,7 @@
 pub mod environment;
-pub mod property_source;
 pub mod properties_loader;
+pub mod property_source;
 
 pub use environment::Environment;
-pub use property_source::{PropertySource, MapPropertySource};
 pub use properties_loader::PropertiesLoader;
+pub use property_source::{MapPropertySource, PropertySource};

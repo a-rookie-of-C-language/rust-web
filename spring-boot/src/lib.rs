@@ -3,10 +3,13 @@ pub mod application;
 pub use application::Application;
 
 // Re-export all proc-macros so users only need `spring-boot` as a dependency.
-pub use spring_macro::{Bean, Component, Lazy, Scope, Value, Aspect, Before, After, Around, AopMethods, ConditionalOnProperty};
+pub use spring_macro::{
+    After, AopMethods, Around, Aspect, Bean, Before, Component, ConditionalOnProperty, Lazy, Scope,
+    Value,
+};
 
 // Re-export AOP interceptor so users can call AopProxyRegistry::fire_before / fire_after
-pub use spring_aop::{AopGuard, AopProxyRegistry, JoinPoint, AspectRegistration, AdviceKind};
+pub use spring_aop::{AdviceKind, AopGuard, AopProxyRegistry, AspectRegistration, JoinPoint};
 
 // Re-export the ApplicationContext trait so users can call get_bean / do_create_bean
 // without importing spring_context directly.
@@ -31,11 +34,13 @@ pub use spring_macro::Repository;
 // spring_boot::web::* and users only need spring-boot as a dependency.
 pub mod web {
     pub use spring_web::{
-        BeanHandlerFn, Handler, HttpMethod, HttpRequest, HttpResponse,
-        HttpServer, PlainHandlerFn, RouteRegistration, Router, StatusCode,
+        BeanHandlerFn, Handler, HttpMethod, HttpRequest, HttpResponse, HttpServer, PlainHandlerFn,
+        RouteRegistration, Router, StatusCode,
     };
 }
 
 // Re-export web macros and HttpServer at top level for ergonomic use.
-pub use spring_macro::{DeleteMapping, GetMapping, PatchMapping, PostMapping, PutMapping, RestController};
+pub use spring_macro::{
+    DeleteMapping, GetMapping, PatchMapping, PostMapping, PutMapping, RestController,
+};
 pub use spring_web::HttpServer;

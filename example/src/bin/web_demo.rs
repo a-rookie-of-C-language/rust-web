@@ -1,3 +1,4 @@
+use spring_boot::web::{HttpRequest, HttpResponse};
 /// REST API 演示 —— 从零 TCP 实现的 HTTP 服务器
 ///
 /// 运行方式：
@@ -21,25 +22,27 @@
 ///   curl -s -X PUT  http://localhost:8080/products/1 \
 ///        -d '{"name":"Rust Book 2nd Ed","price":45.0,"stock":80}'
 ///   curl -s -X DELETE http://localhost:8080/products/1
-
 use spring_boot::{
-    Application, ApplicationContext, DeleteMapping, GetMapping, HttpServer,
-    PostMapping, PutMapping, Repository,
+    Application, ApplicationContext, DeleteMapping, GetMapping, HttpServer, PostMapping,
+    PutMapping, Repository,
 };
-use spring_boot::web::{HttpRequest, HttpResponse};
 
 // ── 实体 ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 struct Product {
-    name:  String,
+    name: String,
     price: f64,
     stock: u32,
 }
 
 impl Product {
     fn new(name: &str, price: f64, stock: u32) -> Self {
-        Self { name: name.to_string(), price, stock }
+        Self {
+            name: name.to_string(),
+            price,
+            stock,
+        }
     }
 
     fn to_json(&self, id: u64) -> String {
@@ -81,9 +84,9 @@ fn get_product(repo: &ProductRepository, req: &HttpRequest) -> HttpResponse {
     let id: u64 = req.path_param("id").unwrap_or("0").parse().unwrap_or(0);
     repo.find_by_id(id, |p| match p {
         Some(p) => HttpResponse::ok().json(p.to_json(id)),
-        None    => HttpResponse::not_found().json(
-            format!(r#"{{"error":"product {} not found"}}"#, id)
-        ),
+        None => {
+            HttpResponse::not_found().json(format!(r#"{{"error":"product {} not found"}}"#, id))
+        }
     })
 }
 
@@ -99,7 +102,7 @@ fn create_product(repo: &ProductRepository, req: &HttpRequest) -> HttpResponse {
             })
         }
         None => HttpResponse::bad_request().json(
-            r#"{"error":"invalid JSON, expected {\"name\":\"…\",\"price\":9.9,\"stock\":50}"}"#
+            r#"{"error":"invalid JSON, expected {\"name\":\"…\",\"price\":9.9,\"stock\":50}"}"#,
         ),
     }
 }
@@ -115,9 +118,7 @@ fn update_product(repo: &ProductRepository, req: &HttpRequest) -> HttpResponse {
                     HttpResponse::ok().json(prod.unwrap().to_json(id))
                 })
             } else {
-                HttpResponse::not_found().json(
-                    format!(r#"{{"error":"product {} not found"}}"#, id)
-                )
+                HttpResponse::not_found().json(format!(r#"{{"error":"product {} not found"}}"#, id))
             }
         }
         None => HttpResponse::bad_request().json(r#"{"error":"invalid JSON body"}"#),
@@ -131,9 +132,7 @@ fn delete_product(repo: &ProductRepository, req: &HttpRequest) -> HttpResponse {
     if repo.delete_by_id(id) {
         HttpResponse::no_content()
     } else {
-        HttpResponse::not_found().json(
-            format!(r#"{{"error":"product {} not found"}}"#, id)
-        )
+        HttpResponse::not_found().json(format!(r#"{{"error":"product {} not found"}}"#, id))
     }
 }
 
@@ -146,22 +145,21 @@ fn json_field<'a>(json: &'a str, key: &str) -> Option<&'a str> {
     let key_pos = json.find(pattern.as_str())?;
     let after_key = json[key_pos + pattern.len()..].trim_start();
     let after_colon = after_key.strip_prefix(':')?.trim_start();
-    if after_colon.starts_with('"') {
+    if let Some(inner) = after_colon.strip_prefix('"') {
         // 字符串值
-        let inner = &after_colon[1..];
         let end = inner.find('"')?;
         Some(&inner[..end])
     } else {
         // 数字 / bool / null
         let end = after_colon
-            .find(|c: char| c == ',' || c == '}' || c == ' ' || c == '\n')
+            .find([',', '}', ' ', '\n'])
             .unwrap_or(after_colon.len());
         Some(after_colon[..end].trim())
     }
 }
 
 fn parse_product_json(json: &str) -> Option<Product> {
-    let name  = json_field(json, "name")?;
+    let name = json_field(json, "name")?;
     let price: f64 = json_field(json, "price")?.parse().ok()?;
     let stock: u32 = json_field(json, "stock")?.parse().ok()?;
     Some(Product::new(name, price, stock))
@@ -181,8 +179,8 @@ fn main() {
     if let Some(bean) = context.get_bean("productRepository") {
         if let Some(repo) = bean.downcast_ref::<ProductRepository>() {
             repo.save(Product::new("Rust Programming Language", 39.9, 100));
-            repo.save(Product::new("Cargo Mug",                  9.9,  50));
-            repo.save(Product::new("Ferris Plush",               19.9, 200));
+            repo.save(Product::new("Cargo Mug", 9.9, 50));
+            repo.save(Product::new("Ferris Plush", 19.9, 200));
             println!("  Seeded {} products.", repo.count());
         }
     }

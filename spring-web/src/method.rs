@@ -11,28 +11,32 @@ pub enum HttpMethod {
 }
 
 impl HttpMethod {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_uppercase().as_str() {
-            "GET"     => Some(Self::GET),
-            "POST"    => Some(Self::POST),
-            "PUT"     => Some(Self::PUT),
-            "DELETE"  => Some(Self::DELETE),
-            "PATCH"   => Some(Self::PATCH),
-            "HEAD"    => Some(Self::HEAD),
-            "OPTIONS" => Some(Self::OPTIONS),
-            _ => None,
-        }
-    }
-
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::GET     => "GET",
-            Self::POST    => "POST",
-            Self::PUT     => "PUT",
-            Self::DELETE  => "DELETE",
-            Self::PATCH   => "PATCH",
-            Self::HEAD    => "HEAD",
+            Self::GET => "GET",
+            Self::POST => "POST",
+            Self::PUT => "PUT",
+            Self::DELETE => "DELETE",
+            Self::PATCH => "PATCH",
+            Self::HEAD => "HEAD",
             Self::OPTIONS => "OPTIONS",
+        }
+    }
+}
+
+impl std::str::FromStr for HttpMethod {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "GET" => Ok(Self::GET),
+            "POST" => Ok(Self::POST),
+            "PUT" => Ok(Self::PUT),
+            "DELETE" => Ok(Self::DELETE),
+            "PATCH" => Ok(Self::PATCH),
+            "HEAD" => Ok(Self::HEAD),
+            "OPTIONS" => Ok(Self::OPTIONS),
+            _ => Err(()),
         }
     }
 }

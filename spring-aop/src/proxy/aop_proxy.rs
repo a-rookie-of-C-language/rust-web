@@ -1,6 +1,7 @@
 use crate::aspect::advice::{Advice, AdviceKind, JoinPoint};
 use crate::aspect::advisor::Advisor;
 use crate::aspect::pointcut::Pointcut;
+use std::sync::MutexGuard;
 use std::sync::{Mutex, OnceLock};
 
 /// Global registry of all `Advisor`s collected from `#[Aspect]` classes.
@@ -14,38 +15,54 @@ fn registry() -> &'static Mutex<Vec<Advisor>> {
     REGISTRY.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+fn registry_guard() -> MutexGuard<'static, Vec<Advisor>> {
+    match registry().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 pub struct AopProxyRegistry;
 
 impl AopProxyRegistry {
     /// Register an advisor programmatically (used by `Application::run()` after
     /// converting `AspectRegistration` inventory entries).
     pub fn register(advisor: Advisor) {
-        registry().lock().unwrap().push(advisor);
+        registry_guard().push(advisor);
     }
 
     /// Convenience: register a `Before` advice for `"beanName::methodName"`.
     pub fn register_before(expr: &str, f: impl Fn(&JoinPoint) + Send + Sync + 'static) {
-        let pc = Pointcut::parse(expr);
-        Self::register(Advisor::new(pc, Advice::before(f)));
+        if let Ok(pc) = Pointcut::parse(expr) {
+            Self::register(Advisor::new(pc, Advice::before(f)));
+        } else {
+            eprintln!("[spring-aop] skip invalid before pointcut: {}", expr);
+        }
     }
 
     /// Convenience: register an `After` advice for `"beanName::methodName"`.
     pub fn register_after(expr: &str, f: impl Fn(&JoinPoint) + Send + Sync + 'static) {
-        let pc = Pointcut::parse(expr);
-        Self::register(Advisor::new(pc, Advice::after(f)));
+        if let Ok(pc) = Pointcut::parse(expr) {
+            Self::register(Advisor::new(pc, Advice::after(f)));
+        } else {
+            eprintln!("[spring-aop] skip invalid after pointcut: {}", expr);
+        }
     }
 
     /// Convenience: register an `Around` advice for `"beanName::methodName"`.
     pub fn register_around(expr: &str, f: impl Fn(&JoinPoint) + Send + Sync + 'static) {
-        let pc = Pointcut::parse(expr);
-        Self::register(Advisor::new(pc, Advice::around(f)));
+        if let Ok(pc) = Pointcut::parse(expr) {
+            Self::register(Advisor::new(pc, Advice::around(f)));
+        } else {
+            eprintln!("[spring-aop] skip invalid around pointcut: {}", expr);
+        }
     }
 
     /// Call all `Before` (and `Around` pre-) advices that match
     /// `(bean_name, method_name)`.
     pub fn fire_before(bean_name: &str, method_name: &str) {
         let jp = JoinPoint::new(bean_name, method_name);
-        let advisors = registry().lock().unwrap();
+        let advisors = registry_guard();
         for advisor in advisors.iter() {
             if advisor.pointcut.matches(bean_name, method_name) {
                 match advisor.advice.kind {
@@ -62,7 +79,7 @@ impl AopProxyRegistry {
     /// `(bean_name, method_name)`.
     pub fn fire_after(bean_name: &str, method_name: &str) {
         let jp = JoinPoint::new(bean_name, method_name);
-        let advisors = registry().lock().unwrap();
+        let advisors = registry_guard();
         for advisor in advisors.iter() {
             if advisor.pointcut.matches(bean_name, method_name) {
                 match advisor.advice.kind {
@@ -77,9 +94,7 @@ impl AopProxyRegistry {
 
     /// Returns `true` if any advisor targets the given bean.
     pub fn has_advisors_for(bean_name: &str) -> bool {
-        registry()
-            .lock()
-            .unwrap()
+        registry_guard()
             .iter()
             .any(|a| a.pointcut.bean_name == bean_name)
     }
@@ -106,7 +121,10 @@ pub struct AopGuard {
 
 impl AopGuard {
     pub fn new(bean_name: &'static str, method_name: &'static str) -> Self {
-        AopGuard { bean_name, method_name }
+        AopGuard {
+            bean_name,
+            method_name,
+        }
     }
 }
 

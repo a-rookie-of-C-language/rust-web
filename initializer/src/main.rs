@@ -226,7 +226,7 @@ greeting=Hello, rust-spring
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 fn to_pascal_case(s: &str) -> String {
-    s.split(|c| c == '-' || c == '_')
+    s.split(['-', '_'])
         .filter(|part| !part.is_empty())
         .fold(String::new(), |mut acc, part| {
             let mut chars = part.chars();

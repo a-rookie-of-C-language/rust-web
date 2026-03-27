@@ -41,6 +41,12 @@ impl Environment {
         }
     }
 
+    pub fn merge_from_override(&mut self, source: &dyn super::property_source::PropertySource) {
+        for (k, v) in source.get_properties() {
+            self.properties.insert(k.to_string(), v.to_string());
+        }
+    }
+
     /// Resolve a `${key:default}` or `${key}` placeholder.
     /// Returns the value string if resolved, or `None` if key absent and no default.
     pub fn resolve_placeholder<'a>(&'a self, placeholder: &'a str) -> Option<String> {
@@ -54,11 +60,11 @@ impl Environment {
             Some(
                 self.properties
                     .get(key)
-                    .map(|s| s.clone())
+                    .cloned()
                     .unwrap_or_else(|| default.to_string()),
             )
         } else {
-            self.properties.get(inner).map(|s| s.clone())
+            self.properties.get(inner).cloned()
         }
     }
 

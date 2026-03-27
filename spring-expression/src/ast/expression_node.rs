@@ -12,17 +12,27 @@ pub enum Expr {
 
     // ── property placeholder ──────────────────────────────────────────────
     /// `${key:default}` — resolved from the env map.
-    PropertyPlaceholder { key: String, default: Option<String> },
+    PropertyPlaceholder {
+        key: String,
+        default: Option<String>,
+    },
 
     // ── identifier / property reference ───────────────────────────────────
     /// Bare identifier: looks up by name in the env map.
     Identifier(String),
 
     // ── unary ─────────────────────────────────────────────────────────────
-    Unary { op: UnaryOp, expr: Box<Expr> },
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr>,
+    },
 
     // ── binary ────────────────────────────────────────────────────────────
-    Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
+    Binary {
+        op: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
 
     // ── ternary ───────────────────────────────────────────────────────────
     Ternary {
@@ -42,13 +52,23 @@ pub enum Expr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
-    Neg,  // -
-    Not,  // !
+    Neg, // -
+    Not, // !
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
-    Add, Sub, Mul, Div, Rem,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
 }

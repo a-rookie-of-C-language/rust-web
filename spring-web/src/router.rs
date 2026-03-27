@@ -14,7 +14,7 @@ use crate::response::HttpResponse;
 pub type PlainHandlerFn = fn(&HttpRequest) -> HttpResponse;
 
 /// 带 bean 注入的路由处理函数: fn(req, bean_any) -> HttpResponse
-pub type BeanHandlerFn  = fn(&HttpRequest, &dyn std::any::Any) -> HttpResponse;
+pub type BeanHandlerFn = fn(&HttpRequest, &dyn std::any::Any) -> HttpResponse;
 
 /// 路由处理器的两种形式
 pub enum Handler {
@@ -34,9 +34,9 @@ pub enum Handler {
 /// 一条路由记录，通过 `inventory::submit!` 在编译期注册，
 /// 由 `#[GetMapping]`、`#[PostMapping]` 等宏生成。
 pub struct RouteRegistration {
-    pub method:  HttpMethod,
+    pub method: HttpMethod,
     /// URL 模式，支持路径参数 `{name}`，例如 `/users/{id}`
-    pub path:    &'static str,
+    pub path: &'static str,
     pub handler: Handler,
 }
 
@@ -60,13 +60,10 @@ impl Router {
             // 为了拿所有权，我们重新包装（Handler 中的函数指针是 Copy）
             routes.push(RouteRegistration {
                 method: reg.method.clone(),
-                path:   reg.path,
+                path: reg.path,
                 handler: match &reg.handler {
                     Handler::Plain(f) => Handler::Plain(*f),
-                    Handler::WithBean { bean_name, f } => Handler::WithBean {
-                        bean_name,
-                        f: *f,
-                    },
+                    Handler::WithBean { bean_name, f } => Handler::WithBean { bean_name, f: *f },
                 },
             });
         }
@@ -88,27 +85,29 @@ impl Router {
                 req.path_params = params; // 填充路径参数
                 return match &route.handler {
                     Handler::Plain(f) => f(req),
-                    Handler::WithBean { bean_name, f } => {
-                        match context.get_bean(bean_name) {
-                            Some(bean) => f(req, bean),
-                            None => HttpResponse::internal_error()
-                                .text(format!("[spring-web] bean '{}' not found in IoC container", bean_name)),
-                        }
-                    }
+                    Handler::WithBean { bean_name, f } => match context.get_bean(bean_name) {
+                        Some(bean) => f(req, bean),
+                        None => HttpResponse::internal_error().text(format!(
+                            "[spring-web] bean '{}' not found in IoC container",
+                            bean_name
+                        )),
+                    },
                 };
             }
         }
 
         // 检查路径存在但方法不对 → 405
-        let path_matched = self.routes.iter().any(|r| {
-            match_path(r.path, &req.path).is_some()
-        });
+        let path_matched = self
+            .routes
+            .iter()
+            .any(|r| match_path(r.path, &req.path).is_some());
         if path_matched {
-            HttpResponse::method_not_allowed()
-                .text(format!("405 Method Not Allowed: {} {}", req.method, req.path))
+            HttpResponse::method_not_allowed().text(format!(
+                "405 Method Not Allowed: {} {}",
+                req.method, req.path
+            ))
         } else {
-            HttpResponse::not_found()
-                .text(format!("404 Not Found: {} {}", req.method, req.path))
+            HttpResponse::not_found().text(format!("404 Not Found: {} {}", req.method, req.path))
         }
     }
 }
@@ -151,7 +150,60 @@ fn match_path(pattern: &str, actual: &str) -> Option<HashMap<String, String>> {
 // ─────────────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
+    use std::any::Any;
+    use std::collections::HashMap;
+
     use super::match_path;
+    use super::{Handler, RouteRegistration, Router};
+    use crate::method::HttpMethod;
+    use crate::request::HttpRequest;
+    use crate::response::HttpResponse;
+    use spring_context::context::application_context::ApplicationContext;
+
+    #[derive(Default)]
+    struct TestContext {
+        beans: HashMap<String, Box<dyn Any>>,
+    }
+
+    impl ApplicationContext for TestContext {
+        fn get_bean(&self, name: &str) -> Option<&dyn Any> {
+            self.beans.get(name).map(|b| b.as_ref())
+        }
+
+        fn is_singleton(&self, _name: &str) -> bool {
+            true
+        }
+
+        fn contains_bean(&self, name: &str) -> bool {
+            self.beans.contains_key(name)
+        }
+
+        fn do_create_bean(&mut self, _name: &str) -> Option<&dyn Any> {
+            None
+        }
+    }
+
+    fn make_request(method: HttpMethod, path: &str) -> HttpRequest {
+        HttpRequest {
+            method,
+            path: path.to_string(),
+            query: HashMap::new(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+            path_params: HashMap::new(),
+        }
+    }
+
+    fn plain_hello(_req: &HttpRequest) -> HttpResponse {
+        HttpResponse::ok().text("hello")
+    }
+
+    fn with_number(_req: &HttpRequest, bean: &dyn Any) -> HttpResponse {
+        let Some(v) = bean.downcast_ref::<u32>() else {
+            return HttpResponse::internal_error().text("type mismatch");
+        };
+        HttpResponse::ok().text(format!("num={}", v))
+    }
 
     #[test]
     fn test_exact_match() {
@@ -181,5 +233,104 @@ mod tests {
     #[test]
     fn test_length_mismatch() {
         assert!(match_path("/users/{id}", "/users/1/extra").is_none());
+    }
+
+    #[test]
+    fn test_dispatch_plain_handler_ok() {
+        let router = Router {
+            routes: vec![RouteRegistration {
+                method: HttpMethod::GET,
+                path: "/hello",
+                handler: Handler::Plain(plain_hello),
+            }],
+        };
+        let mut req = make_request(HttpMethod::GET, "/hello");
+        let ctx = TestContext::default();
+        let resp = router.dispatch(&mut req, &ctx);
+        assert_eq!(resp.status.0, 200);
+        assert_eq!(resp.body, b"hello");
+    }
+
+    #[test]
+    fn test_dispatch_with_bean_ok() {
+        let router = Router {
+            routes: vec![RouteRegistration {
+                method: HttpMethod::GET,
+                path: "/n",
+                handler: Handler::WithBean {
+                    bean_name: "n",
+                    f: with_number,
+                },
+            }],
+        };
+        let mut req = make_request(HttpMethod::GET, "/n");
+        let mut ctx = TestContext::default();
+        ctx.beans.insert("n".to_string(), Box::new(7u32));
+        let resp = router.dispatch(&mut req, &ctx);
+        assert_eq!(resp.status.0, 200);
+        assert_eq!(resp.body, b"num=7");
+    }
+
+    #[test]
+    fn test_dispatch_with_missing_bean_returns_500() {
+        let router = Router {
+            routes: vec![RouteRegistration {
+                method: HttpMethod::GET,
+                path: "/needs",
+                handler: Handler::WithBean {
+                    bean_name: "missing",
+                    f: with_number,
+                },
+            }],
+        };
+        let mut req = make_request(HttpMethod::GET, "/needs");
+        let ctx = TestContext::default();
+        let resp = router.dispatch(&mut req, &ctx);
+        assert_eq!(resp.status.0, 500);
+    }
+
+    #[test]
+    fn test_dispatch_method_not_allowed() {
+        let router = Router {
+            routes: vec![RouteRegistration {
+                method: HttpMethod::GET,
+                path: "/hello",
+                handler: Handler::Plain(plain_hello),
+            }],
+        };
+        let mut req = make_request(HttpMethod::POST, "/hello");
+        let ctx = TestContext::default();
+        let resp = router.dispatch(&mut req, &ctx);
+        assert_eq!(resp.status.0, 405);
+    }
+
+    #[test]
+    fn test_dispatch_not_found() {
+        let router = Router {
+            routes: vec![RouteRegistration {
+                method: HttpMethod::GET,
+                path: "/hello",
+                handler: Handler::Plain(plain_hello),
+            }],
+        };
+        let mut req = make_request(HttpMethod::GET, "/missing");
+        let ctx = TestContext::default();
+        let resp = router.dispatch(&mut req, &ctx);
+        assert_eq!(resp.status.0, 404);
+    }
+
+    #[test]
+    fn test_dispatch_populates_path_params() {
+        let router = Router {
+            routes: vec![RouteRegistration {
+                method: HttpMethod::GET,
+                path: "/users/{id}",
+                handler: Handler::Plain(plain_hello),
+            }],
+        };
+        let mut req = make_request(HttpMethod::GET, "/users/42");
+        let ctx = TestContext::default();
+        let _ = router.dispatch(&mut req, &ctx);
+        assert_eq!(req.path_param("id"), Some("42"));
     }
 }

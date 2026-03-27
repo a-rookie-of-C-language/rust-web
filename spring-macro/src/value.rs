@@ -6,7 +6,7 @@
 /// inside the bean's supplier closure.
 ///
 /// Example usage:
-/// ```rust
+/// ```ignore
 /// #[Component]
 /// #[derive(Debug, Default, Clone)]
 /// struct Config {

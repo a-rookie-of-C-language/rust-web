@@ -1,4 +1,7 @@
-use spring_boot::{Application, ApplicationContext, AopMethods, Aspect, Bean, Before, After, Around, Component, ConditionalOnProperty, JoinPoint, Lazy, Repository, Scope, Value};
+use spring_boot::{
+    After, AopMethods, Application, ApplicationContext, Around, Aspect, Bean, Before, Component,
+    JoinPoint, Repository,
+};
 
 // ── 基础 bean ──────────────────────────────────────────────────────────────────
 
@@ -24,7 +27,7 @@ struct User {
 // 每次 do_create_bean 都创建新实例，不缓存到 singleton_objects
 
 #[Component]
-#[Scope("prototype")]
+#[spring_boot::Scope("prototype")]
 #[derive(Debug, Default, Clone)]
 struct RequestContext {
     request_id: i32,
@@ -34,7 +37,7 @@ struct RequestContext {
 // refresh() 时不主动创建，第一次 get_bean() 时才初始化
 
 #[Component]
-#[Lazy]
+#[spring_boot::Lazy]
 #[derive(Debug, Default, Clone)]
 struct HeavyService {
     initialized: bool,
@@ -93,7 +96,6 @@ struct SpelConfig {
     is_v2: bool,
 }
 
-
 // ── AOP 切面演示 ────────────────────────────────────────────────────────────────
 //
 // OrderService: 被拦截的 bean
@@ -104,11 +106,14 @@ struct OrderService {
     order_count: u32,
 }
 
-#[AopMethods]  // 透明织入：所有 pub fn 自动被 Before/After/Around 拦截，无需手动调用 fire_*
+#[AopMethods] // 透明织入：所有 pub fn 自动被 Before/After/Around 拦截，无需手动调用 fire_*
 impl OrderService {
     /// 下单方法 —— 由 LogAspect 进行 Before / After 拦截。
     pub fn place_order(&self, item: &str) {
-        println!("[OrderService] placing order for: {}", item);
+        println!(
+            "[OrderService] placing order for: {}, count={}",
+            item, self.order_count
+        );
     }
 }
 
@@ -119,7 +124,7 @@ struct LogAspect;
 // ── #[ConditionalOnProperty] 演示 ───────────────────────────────────────────
 // CacheService: feature.cache.enabled=true 时才注册（properties 里已设置）
 #[Component]
-#[ConditionalOnProperty("feature.cache.enabled", having = "true")]
+#[spring_boot::ConditionalOnProperty("feature.cache.enabled", having = "true")]
 #[derive(Debug, Default, Clone)]
 struct CacheService {
     #[Value("${cache.ttl:300}")]
@@ -128,7 +133,7 @@ struct CacheService {
 
 // AnalyticsService: feature.analytics.enabled 未设置，因此不会注册
 #[Component]
-#[ConditionalOnProperty("feature.analytics.enabled", having = "true")]
+#[spring_boot::ConditionalOnProperty("feature.analytics.enabled", having = "true")]
 #[derive(Debug, Default, Clone)]
 struct AnalyticsService;
 // ── Spring Data 风格 Repository 演示 ────────────────────────────────
@@ -142,7 +147,11 @@ struct Product {
 
 impl Product {
     fn new(name: &str, price: f64, stock: u32) -> Self {
-        Self { name: name.to_string(), price, stock }
+        Self {
+            name: name.to_string(),
+            price,
+            stock,
+        }
     }
 }
 
@@ -182,20 +191,31 @@ fn main() {
     // 1. 普通 singleton bean
     if let Some(bean) = context.get_bean("person") {
         if let Some(person) = bean.downcast_ref::<Person>() {
-            println!("[Singleton]  person bean: {:?}", person);
+            println!(
+                "[Singleton]  person bean: id={}, name='{}'",
+                person.id, person.name
+            );
         }
     }
 
     // 2. autowired 注入
     if let Some(bean) = context.get_bean("user") {
         if let Some(user) = bean.downcast_ref::<User>() {
-            println!("[Autowired]  user bean:   {:?}", user);
+            println!(
+                "[Autowired]  user bean:   id={}, name='{}', person='{}'",
+                user.id, user.name, user.person.name
+            );
         }
     }
 
     // 3. Prototype bean — 每次 do_create_bean 产生新实例
     context.do_create_bean("requestContext");
+    let request_ctx_probe = RequestContext::default();
     println!("[Prototype]  requestContext: prototype bean (not cached in singleton store)");
+    println!(
+        "[Prototype]  probe request_id={}",
+        request_ctx_probe.request_id
+    );
 
     // 4. Lazy singleton — refresh() 时跳过，首次 get_bean 时触发创建
     if context.get_bean("heavyService").is_none() {
@@ -206,14 +226,20 @@ fn main() {
     }
     if let Some(bean) = context.get_bean("heavyService") {
         if let Some(svc) = bean.downcast_ref::<HeavyService>() {
-            println!("[Lazy]       heavyService initialized: {:?}", svc);
+            println!(
+                "[Lazy]       heavyService initialized: initialized={}",
+                svc.initialized
+            );
         }
     }
 
     // 5. @Bean 函数式定义
     if let Some(bean) = context.get_bean("appConfig") {
         if let Some(cfg) = bean.downcast_ref::<AppConfig>() {
-            println!("[Bean]       appConfig: {:?}", cfg);
+            println!(
+                "[Bean]       appConfig: version={}, max_connections={}",
+                cfg.version, cfg.max_connections
+            );
         }
     }
 
@@ -227,14 +253,24 @@ fn main() {
     // 6b. #[Value("#{...}")] SpEL 表达式注入
     if let Some(bean) = context.get_bean("spelConfig") {
         if let Some(cfg) = bean.downcast_ref::<SpelConfig>() {
-            println!("[SpEL]       double_port (port*2 if >8000): {}", cfg.double_port);
-            println!("[SpEL]       app_name_upper (toUpperCase): {}", cfg.app_name_upper);
-            println!("[SpEL]       extra_connections (max+50):    {}", cfg.extra_connections);
+            println!(
+                "[SpEL]       double_port (port*2 if >8000): {}",
+                cfg.double_port
+            );
+            println!(
+                "[SpEL]       app_name_upper (toUpperCase): {}",
+                cfg.app_name_upper
+            );
+            println!(
+                "[SpEL]       extra_connections (max+50):    {}",
+                cfg.extra_connections
+            );
             println!("[SpEL]       is_v2 (version=='2.0.0'):       {}", cfg.is_v2);
         }
     }
 
     // 7. AOP 切面拦截演示
+    let _aspect_marker = LogAspect;
     if let Some(bean) = context.get_bean("orderService") {
         if let Some(svc) = bean.downcast_ref::<OrderService>() {
             println!("\n[AOP] Calling orderService.place_order(\"laptop\")...");
@@ -248,7 +284,10 @@ fn main() {
     match context.get_bean("cacheService") {
         Some(bean) if bean.downcast_ref::<CacheService>().is_some() => {
             let svc = bean.downcast_ref::<CacheService>().unwrap();
-            println!("  cacheService registered   (feature.cache.enabled=true):  ttl={}s", svc.ttl);
+            println!(
+                "  cacheService registered   (feature.cache.enabled=true):  ttl={}s",
+                svc.ttl
+            );
         }
         _ => println!("  cacheService NOT registered"),
     }
@@ -262,8 +301,8 @@ fn main() {
     if let Some(bean) = context.get_bean("productRepository") {
         if let Some(repo) = bean.downcast_ref::<ProductRepository>() {
             // save
-            let id1 = repo.save(Product::new("Rust Book",  39.9, 100));
-            let id2 = repo.save(Product::new("Cargo Mug",   9.9,  50));
+            let id1 = repo.save(Product::new("Rust Book", 39.9, 100));
+            let id2 = repo.save(Product::new("Cargo Mug", 9.9, 50));
             let id3 = repo.save(Product::new("Ferris Plush", 19.9, 200));
             println!("  saved 3 products, ids: {}, {}, {}", id1, id2, id3);
             println!("  count: {}", repo.count());
@@ -283,14 +322,23 @@ fn main() {
             let all = repo.find_all_cloned();
             println!("  find_all ({} items):", all.len());
             for (id, p) in &all {
-                println!("    id={} name='{}' price={:.1} stock={}", id, p.name, p.price, p.stock);
+                println!(
+                    "    id={} name='{}' price={:.1} stock={}",
+                    id, p.name, p.price, p.stock
+                );
             }
 
             // delete
             let deleted = repo.delete_by_id(id3);
-            println!("  delete id={}: {}, count now: {}", id3, deleted, repo.count());
+            println!(
+                "  delete id={}: {}, count now: {}",
+                id3,
+                deleted,
+                repo.count()
+            );
 
             // exists
             println!("  exists id={}: {}", id3, repo.exists_by_id(id3));
         }
-    }}
+    }
+}

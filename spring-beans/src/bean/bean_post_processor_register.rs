@@ -38,5 +38,10 @@ impl BeanPostProcessorRegistry {
     pub fn is_empty(&self) -> bool {
         self.processors.is_empty()
     }
+}
 
+impl Default for BeanPostProcessorRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }

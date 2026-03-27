@@ -33,7 +33,7 @@ impl HttpRequest {
         reader
             .read_line(&mut request_line)
             .map_err(|e| format!("read request line: {}", e))?;
-        let request_line = request_line.trim_end_matches(|c| c == '\r' || c == '\n');
+        let request_line = request_line.trim_end_matches(['\r', '\n']);
 
         if request_line.is_empty() {
             return Err("empty request line".to_string());
@@ -41,11 +41,12 @@ impl HttpRequest {
 
         let mut parts = request_line.splitn(3, ' ');
         let method_str = parts.next().unwrap_or("");
-        let full_path   = parts.next().unwrap_or("/");
+        let full_path = parts.next().unwrap_or("/");
         // HTTP version 暂不校验
 
-        let method = HttpMethod::from_str(method_str)
-            .ok_or_else(|| format!("unsupported method: {}", method_str))?;
+        let method = method_str
+            .parse::<HttpMethod>()
+            .map_err(|_| format!("unsupported method: {}", method_str))?;
 
         // 2. 分离 path 和 query string
         let (path, query) = Self::split_path_query(full_path);
@@ -57,13 +58,13 @@ impl HttpRequest {
             reader
                 .read_line(&mut line)
                 .map_err(|e| format!("read header: {}", e))?;
-            let line = line.trim_end_matches(|c| c == '\r' || c == '\n');
+            let line = line.trim_end_matches(['\r', '\n']);
             if line.is_empty() {
                 break; // 头部结束空行
             }
             // "Header-Name: value"
             if let Some(colon) = line.find(':') {
-                let key   = line[..colon].trim().to_lowercase();
+                let key = line[..colon].trim().to_lowercase();
                 let value = line[colon + 1..].trim().to_string();
                 headers.insert(key, value);
             }
@@ -122,12 +123,14 @@ impl HttpRequest {
     fn split_path_query(full: &str) -> (String, HashMap<String, String>) {
         let (path_str, query_str) = match full.find('?') {
             Some(i) => (&full[..i], &full[i + 1..]),
-            None    => (full, ""),
+            None => (full, ""),
         };
 
         let mut query = HashMap::new();
         for pair in query_str.split('&') {
-            if pair.is_empty() { continue; }
+            if pair.is_empty() {
+                continue;
+            }
             match pair.find('=') {
                 Some(i) => {
                     query.insert(

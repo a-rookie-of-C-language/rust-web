@@ -30,7 +30,10 @@ inventory::collect!(AspectRegistration);
 /// all statically-submitted `AspectRegistration` entries.
 pub fn initialize_aop() {
     for reg in inventory::iter::<AspectRegistration>() {
-        let pc = Pointcut::parse(reg.pointcut);
+        let Ok(pc) = Pointcut::parse(reg.pointcut) else {
+            eprintln!("[spring-aop] skip invalid pointcut: {}", reg.pointcut);
+            continue;
+        };
         let kind = reg.kind;
         let handler = reg.handler;
         let advice = Advice {

@@ -22,14 +22,17 @@ fn expand_all_args_constructor(input: &ItemStruct) -> syn::Result<proc_macro2::T
             ))
         }
     };
-    let params = fields.iter().map(|f| {
-        let field_ident = f
-            .ident
-            .as_ref()
-            .ok_or_else(|| syn::Error::new_spanned(f, "field must have an identifier"))?;
-        let field_type = &f.ty;
-        Ok(quote! { #field_ident: #field_type })
-    }).collect::<syn::Result<Vec<_>>>()?;
+    let params = fields
+        .iter()
+        .map(|f| {
+            let field_ident = f
+                .ident
+                .as_ref()
+                .ok_or_else(|| syn::Error::new_spanned(f, "field must have an identifier"))?;
+            let field_type = &f.ty;
+            Ok(quote! { #field_ident: #field_type })
+        })
+        .collect::<syn::Result<Vec<_>>>()?;
     let args = fields.iter().map(|f| f.ident.as_ref().unwrap());
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {

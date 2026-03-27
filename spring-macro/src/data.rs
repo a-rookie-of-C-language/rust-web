@@ -16,16 +16,17 @@ fn expand_data(input: &ItemStruct) -> syn::Result<proc_macro2::TokenStream> {
     let name = &input.ident;
     let fields = match &input.fields {
         Fields::Named(fields) => &fields.named,
-        _ => return Err(syn::Error::new_spanned(
-            input,
-            "data macro only supports named fields")),
+        _ => {
+            return Err(syn::Error::new_spanned(
+                input,
+                "data macro only supports named fields",
+            ))
+        }
     };
     let mut methods = Vec::new();
     methods.extend(build_getter_methods(fields)?);
     methods.extend(build_setter_methods(fields)?);
-    let (impl_generics, 
-        ty_generics, 
-        where_clause) = input.generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
         #input
 

@@ -9,17 +9,15 @@
 //! - [`HttpServer`] — 单线程 TCP 监听循环
 
 pub mod method;
-pub mod status;
 pub mod request;
 pub mod response;
 pub mod router;
 pub mod server;
+pub mod status;
 
 pub use method::HttpMethod;
-pub use status::StatusCode;
 pub use request::HttpRequest;
 pub use response::HttpResponse;
-pub use router::{
-    BeanHandlerFn, Handler, PlainHandlerFn, RouteRegistration, Router,
-};
+pub use router::{BeanHandlerFn, Handler, PlainHandlerFn, RouteRegistration, Router};
 pub use server::HttpServer;
+pub use status::StatusCode;

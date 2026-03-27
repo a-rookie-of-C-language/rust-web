@@ -80,12 +80,21 @@ cargo fmt --all
 # Run linter (must pass with zero warnings)
 cargo clippy --workspace --all-targets -- -D warnings
 
+# Security audit
+cargo install cargo-audit --locked
+cargo audit
+
 # Run the example
 cargo run -p example
 
 # Generate a fresh demo project
 cargo run -p initializer -- --name demo --output /tmp
 ```
+
+### Proc-macro UI contracts (trybuild)
+
+`spring-macro` includes a trybuild harness at `spring-macro/tests/trybuild.rs`.
+It is currently marked ignored until stderr snapshots are finalized.
 
 ### Project layout
 

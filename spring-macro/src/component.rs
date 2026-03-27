@@ -3,8 +3,8 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::parse::Parser;
 use syn::{
-    parse_macro_input, Attribute, Expr, ExprArray, ExprLit, Fields, GenericArgument, Ident, ItemStruct, Lit,
-    LitBool, LitStr, PathArguments, Type,
+    parse_macro_input, Attribute, Expr, ExprArray, ExprLit, Fields, GenericArgument, Ident,
+    ItemStruct, Lit, LitBool, LitStr, PathArguments, Type,
 };
 
 pub fn component_impl(attribute: TokenStream, item: TokenStream) -> TokenStream {
@@ -18,9 +18,11 @@ pub fn component_impl(attribute: TokenStream, item: TokenStream) -> TokenStream 
     let name = args.name.unwrap_or(default_name);
     // 从 struct attrs 中读取 #[Scope(...)] / #[Lazy]，覆盖显式参数
     let struct_scope = extract_scope_attr(&input.attrs);
-    let struct_lazy  = extract_lazy_attr(&input.attrs);
-    let scope = struct_scope.or(args.scope).unwrap_or_else(|| "singleton".to_string());
-    let lazy  = struct_lazy.or(args.lazy).unwrap_or(false);
+    let struct_lazy = extract_lazy_attr(&input.attrs);
+    let scope = struct_scope
+        .or(args.scope)
+        .unwrap_or_else(|| "singleton".to_string());
+    let lazy = struct_lazy.or(args.lazy).unwrap_or(false);
     let name_lit = LitStr::new(&name, Span::call_site());
     let scope_token = match scope.as_str() {
         "singleton" => quote! { spring_beans::factory::config::BeanScope::Singleton },
@@ -195,7 +197,7 @@ fn collect_value_fields(input: &ItemStruct) -> Vec<(Ident, String, Type)> {
     };
     for field in fields {
         for attr in &field.attrs {
-            if attr.path().is_ident("Value") || attr.path().is_ident("value") {
+            if path_has_ident(attr.path(), "Value") || path_has_ident(attr.path(), "value") {
                 if let Ok(lit) = attr.parse_args::<LitStr>() {
                     let placeholder = lit.value();
                     if let Some(field_ident) = field.ident.clone() {
@@ -260,6 +262,15 @@ fn build_value_inject_stmts(input: &ItemStruct) -> Vec<proc_macro2::TokenStream>
         .collect()
 }
 
+fn path_has_ident(path: &syn::Path, ident: &str) -> bool {
+    path.is_ident(ident)
+        || path
+            .segments
+            .last()
+            .map(|segment| segment.ident == ident)
+            .unwrap_or(false)
+}
+
 /// Parse `${key:default}` or `${key}` into (key, default) where default is "" when absent.
 fn parse_placeholder(placeholder: &str) -> (String, String) {
     let inner = placeholder
@@ -272,7 +283,6 @@ fn parse_placeholder(placeholder: &str) -> (String, String) {
         (inner.to_string(), String::new())
     }
 }
-
 
 #[derive(Default)]
 struct ComponentArgs {
@@ -337,7 +347,6 @@ fn default_bean_name(ident: &syn::Ident) -> String {
     }
 }
 
-
 fn extract_dependency_name(ty: &Type) -> Option<String> {
     match ty {
         Type::Path(path) => {
@@ -389,21 +398,24 @@ fn lowercase_first(raw: &str) -> String {
     }
 }
 
-
 /// 同时剥离 struct 字段上的 #[autowired] 和 struct 上的 #[Scope] / #[Lazy] / #[ConditionalOnProperty]
 fn strip_helper_attrs(mut input: ItemStruct) -> ItemStruct {
     // 剥离 struct-level helper attrs
     input.attrs.retain(|attr| {
-        !attr.path().is_ident("Scope")
-            && !attr.path().is_ident("scope")
-            && !attr.path().is_ident("Lazy")
-            && !attr.path().is_ident("lazy")
-            && !attr.path().is_ident("ConditionalOnProperty")
+        !path_has_ident(attr.path(), "Scope")
+            && !path_has_ident(attr.path(), "scope")
+            && !path_has_ident(attr.path(), "Lazy")
+            && !path_has_ident(attr.path(), "lazy")
+            && !path_has_ident(attr.path(), "ConditionalOnProperty")
     });
     // 剥离字段上的 #[autowired]
     if let Fields::Named(ref mut fields) = input.fields {
         for field in fields.named.iter_mut() {
-            field.attrs.retain(|attr| !attr.path().is_ident("autowired") && !attr.path().is_ident("Value") && !attr.path().is_ident("value"));
+            field.attrs.retain(|attr| {
+                !path_has_ident(attr.path(), "autowired")
+                    && !path_has_ident(attr.path(), "Value")
+                    && !path_has_ident(attr.path(), "value")
+            });
         }
     }
     input
@@ -412,7 +424,7 @@ fn strip_helper_attrs(mut input: ItemStruct) -> ItemStruct {
 /// 从 struct-level attrs 中读取 #[Scope("...")]
 fn extract_scope_attr(attrs: &[Attribute]) -> Option<String> {
     for attr in attrs {
-        if attr.path().is_ident("Scope") || attr.path().is_ident("scope") {
+        if path_has_ident(attr.path(), "Scope") || path_has_ident(attr.path(), "scope") {
             // 支持两种语法: #[Scope("prototype")] 和 #[Scope = "prototype"]
             if let Ok(lit) = attr.parse_args::<LitStr>() {
                 return Some(lit.value());
@@ -425,7 +437,7 @@ fn extract_scope_attr(attrs: &[Attribute]) -> Option<String> {
 /// 从 struct-level attrs 中读取 #[Lazy] / #[Lazy(true)] / #[Lazy(false)]
 fn extract_lazy_attr(attrs: &[Attribute]) -> Option<bool> {
     for attr in attrs {
-        if attr.path().is_ident("Lazy") || attr.path().is_ident("lazy") {
+        if path_has_ident(attr.path(), "Lazy") || path_has_ident(attr.path(), "lazy") {
             // #[Lazy] 无参数 => true，#[Lazy(false)] => false
             if let Ok(lit) = attr.parse_args::<LitBool>() {
                 return Some(lit.value());
@@ -442,7 +454,7 @@ fn extract_lazy_attr(attrs: &[Attribute]) -> Option<bool> {
 ///   2. `#[ConditionalOnProperty("key", having = "value")]` → 匹配指定值
 fn extract_conditional_attr(attrs: &[Attribute]) -> Option<(String, String)> {
     for attr in attrs {
-        if attr.path().is_ident("ConditionalOnProperty") {
+        if path_has_ident(attr.path(), "ConditionalOnProperty") {
             let mut key = String::new();
             let mut having = "true".to_string();
 
@@ -454,7 +466,9 @@ fn extract_conditional_attr(attrs: &[Attribute]) -> Option<(String, String)> {
                 // 可选的命名参数
                 while input.peek(syn::Token![,]) {
                     let _comma: syn::Token![,] = input.parse()?;
-                    if input.is_empty() { break; }
+                    if input.is_empty() {
+                        break;
+                    }
                     let ident: Ident = input.parse()?;
                     let _eq: syn::Token![=] = input.parse()?;
                     if ident == "having" {

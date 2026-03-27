@@ -1,10 +1,12 @@
 use proc_macro2::Span;
 use quote::quote;
 use syn::punctuated::Punctuated;
-use syn::{Field, Ident};
 use syn::token::Comma;
+use syn::{Field, Ident};
 
-pub fn build_getter_methods(fields: &Punctuated<Field, Comma>) -> syn::Result<Vec<proc_macro2::TokenStream>> {
+pub fn build_getter_methods(
+    fields: &Punctuated<Field, Comma>,
+) -> syn::Result<Vec<proc_macro2::TokenStream>> {
     let mut methods = Vec::new();
     for field in fields {
         let field_ident = field
@@ -23,7 +25,9 @@ pub fn build_getter_methods(fields: &Punctuated<Field, Comma>) -> syn::Result<Ve
     Ok(methods)
 }
 
-pub fn build_setter_methods(fields: &Punctuated<Field, Comma>) -> syn::Result<Vec<proc_macro2::TokenStream>> {
+pub fn build_setter_methods(
+    fields: &Punctuated<Field, Comma>,
+) -> syn::Result<Vec<proc_macro2::TokenStream>> {
     let mut methods = Vec::new();
     for field in fields {
         let field_ident = field

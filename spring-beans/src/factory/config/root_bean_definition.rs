@@ -1,6 +1,10 @@
-use std::any::{Any, TypeId};
-use spring_macro::{all_args_constructor, data};
 use super::bean_definition::{BeanDefinition, BeanScope};
+use spring_macro::{all_args_constructor, data};
+use std::any::{Any, TypeId};
+
+type ResolvedDeps = std::collections::HashMap<String, Box<dyn Any>>;
+type EnvMap = std::collections::HashMap<String, String>;
+type Supplier = dyn Fn(&ResolvedDeps, &EnvMap) -> Box<dyn Any>;
 
 #[data]
 #[all_args_constructor]
@@ -10,12 +14,11 @@ pub struct RootBeanDefinition {
     scope: BeanScope,
     is_lazy: bool,
     dependencies: Vec<String>,
-    supplier: Box<dyn Fn(&std::collections::HashMap<String, Box<dyn Any>>, &std::collections::HashMap<String, String>) -> Box<dyn Any>>,
+    supplier: Box<Supplier>,
     /// Optional `(property_key, expected_value)` condition.
     /// Set by `#[ConditionalOnProperty("key", having = "value")]`.
     condition: Option<(String, String)>,
 }
-
 
 impl BeanDefinition for RootBeanDefinition {
     fn get_bean_class_name(&self) -> &str {
@@ -46,7 +49,11 @@ impl BeanDefinition for RootBeanDefinition {
         annotation == "RootBeanDefinition"
     }
 
-    fn create_instance(&self, resolved_deps: &std::collections::HashMap<String, Box<dyn Any>>, env: &std::collections::HashMap<String, String>) -> Box<dyn Any> {
+    fn create_instance(
+        &self,
+        resolved_deps: &std::collections::HashMap<String, Box<dyn Any>>,
+        env: &std::collections::HashMap<String, String>,
+    ) -> Box<dyn Any> {
         (self.supplier)(resolved_deps, env)
     }
 

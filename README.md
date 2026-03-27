@@ -21,7 +21,7 @@ English | [中文](README.zh.md)
 | `@Lazy` | `#[Lazy]` |
 | `@Value("${key:default}")` | `#[Value("${key:default}")]` |
 | `SpringApplication.run()` | `Application::run()` |
-| `application.properties` | `application.properties` |
+| `application.properties` | `application.properties` + `application-{profile}.properties` + `SPRING_PROP_*` |
 
 ---
 
@@ -207,6 +207,12 @@ struct HeavyService { ... }
 
 Place this file alongside your binary (or in the project root during `cargo run`). Values are loaded by `Application::run()` before any beans are wired.
 
+Layering precedence (low -> high):
+
+1. `application.properties`
+2. `application-{profile}.properties` when `SPRING_PROFILE` is set
+3. Environment overrides with `SPRING_PROP_*` (for example `SPRING_PROP_SERVER_PORT=9090`)
+
 ```properties
 app.name=my-rust-app
 server.port=9090
@@ -256,6 +262,15 @@ Expected output:
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+See [SECURITY.md](SECURITY.md).
+
+## Compatibility and migration
+
+- Java compatibility matrix: [docs/java-spring-compat.md](docs/java-spring-compat.md)
+- Migration notes: [docs/migration-from-spring.md](docs/migration-from-spring.md)
 
 ---
 

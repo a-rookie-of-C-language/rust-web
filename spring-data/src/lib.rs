@@ -22,7 +22,9 @@ pub trait Repository<T> {
     /// 遍历所有记录，通过回调暴露 (id, &T)。
     fn for_each<F: FnMut(u64, &T)>(&self, f: F);
     /// 将所有记录克隆出来，以 Vec<(u64, T)> 形式返回（需要 T: Clone）。
-    fn find_all_cloned(&self) -> Vec<(u64, T)> where T: Clone;
+    fn find_all_cloned(&self) -> Vec<(u64, T)>
+    where
+        T: Clone;
     /// 按主键删除，返回是否存在。
     fn delete_by_id(&self, id: u64) -> bool;
     /// 清空所有记录。
@@ -70,8 +72,8 @@ impl<T> Repository<T> for InMemoryRepository<T> {
 
     fn update(&self, id: u64, entity: T) -> bool {
         let mut store = self.store.borrow_mut();
-        if store.contains_key(&id) {
-            store.insert(id, entity);
+        if let std::collections::hash_map::Entry::Occupied(mut e) = store.entry(id) {
+            e.insert(entity);
             true
         } else {
             false
@@ -92,7 +94,10 @@ impl<T> Repository<T> for InMemoryRepository<T> {
         }
     }
 
-    fn find_all_cloned(&self) -> Vec<(u64, T)> where T: Clone {
+    fn find_all_cloned(&self) -> Vec<(u64, T)>
+    where
+        T: Clone,
+    {
         let store = self.store.borrow();
         let mut pairs: Vec<(u64, T)> = store.iter().map(|(&k, v)| (k, v.clone())).collect();
         pairs.sort_by_key(|(k, _)| *k);
@@ -128,7 +133,10 @@ mod tests {
     }
 
     fn user(name: &str, age: u32) -> User {
-        User { name: name.to_string(), age }
+        User {
+            name: name.to_string(),
+            age,
+        }
     }
 
     #[test]

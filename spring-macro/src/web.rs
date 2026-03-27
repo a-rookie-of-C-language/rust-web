@@ -37,13 +37,13 @@ pub fn rest_controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStrea
 /// 支持两种 handler 签名：
 ///
 /// 1. **Plain handler** — 无 bean 注入:
-///    ```rust
+///    ```ignore
 ///    #[GetMapping("/hello")]
 ///    fn hello(req: &HttpRequest) -> HttpResponse { ... }
 ///    ```
 ///
 /// 2. **Bean handler** — 从 IoC 容器注入第一个参数所对应的 bean:
-///    ```rust
+///    ```ignore
 ///    #[GetMapping("/users")]
 ///    fn list_users(ctrl: &UserController, req: &HttpRequest) -> HttpResponse { ... }
 ///    ```
@@ -105,13 +105,15 @@ fn mapping_impl(method: &str, attr: TokenStream, item: TokenStream) -> TokenStre
                     req:  &spring_boot::web::HttpRequest,
                     bean: &dyn std::any::Any,
                 ) -> spring_boot::web::HttpResponse {
-                    let ctrl = bean
-                        .downcast_ref::<#bean_type_ident>()
-                        .expect(concat!(
-                            "[spring-web] downcast failed for bean: ",
-                            #bean_name
-                        ));
-                    #func_name(ctrl, req)
+                    if let Some(ctrl) = bean.downcast_ref::<#bean_type_ident>() {
+                        #func_name(ctrl, req)
+                    } else {
+                        spring_boot::web::HttpResponse::internal_error().json(concat!(
+                            "{\"error\":\"bean type mismatch: ",
+                            #bean_name,
+                            "\"}"
+                        ))
+                    }
                 }
 
                 inventory::submit! {

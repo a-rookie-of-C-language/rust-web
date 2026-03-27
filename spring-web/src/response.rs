@@ -7,9 +7,9 @@ use crate::status::StatusCode;
 /// HTTP 响应构建器
 #[derive(Debug)]
 pub struct HttpResponse {
-    pub status:  StatusCode,
+    pub status: StatusCode,
     pub headers: HashMap<String, String>,
-    pub body:    Vec<u8>,
+    pub body: Vec<u8>,
 }
 
 impl HttpResponse {
@@ -25,15 +25,33 @@ impl HttpResponse {
         }
     }
 
-    pub fn ok()               -> Self { Self::new(StatusCode::OK) }
-    pub fn created()          -> Self { Self::new(StatusCode::CREATED) }
-    pub fn no_content()       -> Self { Self::new(StatusCode::NO_CONTENT) }
-    pub fn bad_request()      -> Self { Self::new(StatusCode::BAD_REQUEST) }
-    pub fn unauthorized()     -> Self { Self::new(StatusCode::UNAUTHORIZED) }
-    pub fn forbidden()        -> Self { Self::new(StatusCode::FORBIDDEN) }
-    pub fn not_found()        -> Self { Self::new(StatusCode::NOT_FOUND) }
-    pub fn method_not_allowed()-> Self { Self::new(StatusCode::METHOD_NOT_ALLOWED) }
-    pub fn internal_error()   -> Self { Self::new(StatusCode::INTERNAL_SERVER_ERROR) }
+    pub fn ok() -> Self {
+        Self::new(StatusCode::OK)
+    }
+    pub fn created() -> Self {
+        Self::new(StatusCode::CREATED)
+    }
+    pub fn no_content() -> Self {
+        Self::new(StatusCode::NO_CONTENT)
+    }
+    pub fn bad_request() -> Self {
+        Self::new(StatusCode::BAD_REQUEST)
+    }
+    pub fn unauthorized() -> Self {
+        Self::new(StatusCode::UNAUTHORIZED)
+    }
+    pub fn forbidden() -> Self {
+        Self::new(StatusCode::FORBIDDEN)
+    }
+    pub fn not_found() -> Self {
+        Self::new(StatusCode::NOT_FOUND)
+    }
+    pub fn method_not_allowed() -> Self {
+        Self::new(StatusCode::METHOD_NOT_ALLOWED)
+    }
+    pub fn internal_error() -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR)
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // 链式 builder
@@ -48,8 +66,12 @@ impl HttpResponse {
     /// 设置纯文本 body，自动设置 Content-Type 和 Content-Length
     pub fn text(mut self, text: impl Into<String>) -> Self {
         let bytes = text.into().into_bytes();
-        self.headers.insert("Content-Type".to_string(), "text/plain; charset=utf-8".to_string());
-        self.headers.insert("Content-Length".to_string(), bytes.len().to_string());
+        self.headers.insert(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        );
+        self.headers
+            .insert("Content-Length".to_string(), bytes.len().to_string());
         self.body = bytes;
         self
     }
@@ -57,8 +79,12 @@ impl HttpResponse {
     /// 设置 HTML body
     pub fn html(mut self, markup: impl Into<String>) -> Self {
         let bytes = markup.into().into_bytes();
-        self.headers.insert("Content-Type".to_string(), "text/html; charset=utf-8".to_string());
-        self.headers.insert("Content-Length".to_string(), bytes.len().to_string());
+        self.headers.insert(
+            "Content-Type".to_string(),
+            "text/html; charset=utf-8".to_string(),
+        );
+        self.headers
+            .insert("Content-Length".to_string(), bytes.len().to_string());
         self.body = bytes;
         self
     }
@@ -66,8 +92,12 @@ impl HttpResponse {
     /// 设置 JSON body（调用者自己序列化字符串，或传 serde_json）
     pub fn json(mut self, payload: impl Into<String>) -> Self {
         let bytes = payload.into().into_bytes();
-        self.headers.insert("Content-Type".to_string(), "application/json; charset=utf-8".to_string());
-        self.headers.insert("Content-Length".to_string(), bytes.len().to_string());
+        self.headers.insert(
+            "Content-Type".to_string(),
+            "application/json; charset=utf-8".to_string(),
+        );
+        self.headers
+            .insert("Content-Length".to_string(), bytes.len().to_string());
         self.body = bytes;
         self
     }
@@ -75,7 +105,8 @@ impl HttpResponse {
     /// 设置任意 body 字节
     pub fn body(mut self, bytes: impl Into<Vec<u8>>) -> Self {
         let b = bytes.into();
-        self.headers.insert("Content-Length".to_string(), b.len().to_string());
+        self.headers
+            .insert("Content-Length".to_string(), b.len().to_string());
         self.body = b;
         self
     }

@@ -1,17 +1,17 @@
 use proc_macro::TokenStream;
 
-mod component;
+mod accessors;
+mod all_args_constructor;
+mod aop_methods;
+mod aspect;
 mod bean;
-mod value;
+mod component;
 mod data;
 mod getter;
-mod setter;
-mod accessors;
 mod no_arg_constructor;
-mod all_args_constructor;
-mod aspect;
-mod aop_methods;
 mod repository;
+mod setter;
+mod value;
 mod web;
 #[proc_macro_attribute]
 pub fn component(attribute: TokenStream, item: TokenStream) -> TokenStream {
@@ -20,14 +20,14 @@ pub fn component(attribute: TokenStream, item: TokenStream) -> TokenStream {
 
 /// derive macro 内部别名（保持向后兼容）
 #[proc_macro_derive(ComponentDerive, attributes(autowired))]
-    pub fn component_derive(item: TokenStream) -> TokenStream {
+pub fn component_derive(item: TokenStream) -> TokenStream {
     component::component_derive_impl(item)
 }
 
 /// #[Component] attribute macro —— Spring 风格的主入口，自动处理 #[autowired] 字段注入
 #[proc_macro_attribute]
 #[allow(non_snake_case)]
-    pub fn Component(attribute: TokenStream, item: TokenStream) -> TokenStream {
+pub fn Component(attribute: TokenStream, item: TokenStream) -> TokenStream {
     component::component_impl(attribute, item)
 }
 
@@ -36,14 +36,14 @@ pub fn component(attribute: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 #[allow(non_snake_case)]
 pub fn Scope(_attribute: TokenStream, item: TokenStream) -> TokenStream {
-    item  // 透传，内容由 #[Component] 处理
+    item // 透传，内容由 #[Component] 处理
 }
 
 /// #[Lazy] / #[Lazy(false)] —— 附加在 #[Component] struct 上，指定 bean 是否延迟初始化
 #[proc_macro_attribute]
 #[allow(non_snake_case)]
 pub fn Lazy(_attribute: TokenStream, item: TokenStream) -> TokenStream {
-    item  // 透传，内容由 #[Component] 处理
+    item // 透传，内容由 #[Component] 处理
 }
 
 /// #[Bean] —— 方法级别注解，类似 Java @Bean。标注在函数上，函数返回值就是 bean 实例。

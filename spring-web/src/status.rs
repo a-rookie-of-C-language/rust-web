@@ -3,24 +3,24 @@
 pub struct StatusCode(pub u16);
 
 impl StatusCode {
-    pub const OK:                    Self = Self(200);
-    pub const CREATED:               Self = Self(201);
-    pub const ACCEPTED:              Self = Self(202);
-    pub const NO_CONTENT:            Self = Self(204);
-    pub const MOVED_PERMANENTLY:     Self = Self(301);
-    pub const FOUND:                 Self = Self(302);
-    pub const NOT_MODIFIED:          Self = Self(304);
-    pub const BAD_REQUEST:           Self = Self(400);
-    pub const UNAUTHORIZED:          Self = Self(401);
-    pub const FORBIDDEN:             Self = Self(403);
-    pub const NOT_FOUND:             Self = Self(404);
-    pub const METHOD_NOT_ALLOWED:    Self = Self(405);
-    pub const CONFLICT:              Self = Self(409);
-    pub const UNPROCESSABLE_ENTITY:  Self = Self(422);
+    pub const OK: Self = Self(200);
+    pub const CREATED: Self = Self(201);
+    pub const ACCEPTED: Self = Self(202);
+    pub const NO_CONTENT: Self = Self(204);
+    pub const MOVED_PERMANENTLY: Self = Self(301);
+    pub const FOUND: Self = Self(302);
+    pub const NOT_MODIFIED: Self = Self(304);
+    pub const BAD_REQUEST: Self = Self(400);
+    pub const UNAUTHORIZED: Self = Self(401);
+    pub const FORBIDDEN: Self = Self(403);
+    pub const NOT_FOUND: Self = Self(404);
+    pub const METHOD_NOT_ALLOWED: Self = Self(405);
+    pub const CONFLICT: Self = Self(409);
+    pub const UNPROCESSABLE_ENTITY: Self = Self(422);
     pub const INTERNAL_SERVER_ERROR: Self = Self(500);
-    pub const NOT_IMPLEMENTED:       Self = Self(501);
-    pub const BAD_GATEWAY:           Self = Self(502);
-    pub const SERVICE_UNAVAILABLE:   Self = Self(503);
+    pub const NOT_IMPLEMENTED: Self = Self(501);
+    pub const BAD_GATEWAY: Self = Self(502);
+    pub const SERVICE_UNAVAILABLE: Self = Self(503);
 
     pub fn reason(&self) -> &'static str {
         match self.0 {
@@ -42,7 +42,7 @@ impl StatusCode {
             501 => "Not Implemented",
             502 => "Bad Gateway",
             503 => "Service Unavailable",
-            _   => "Unknown",
+            _ => "Unknown",
         }
     }
 
