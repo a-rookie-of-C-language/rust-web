@@ -30,13 +30,11 @@ impl BeanDefinitionRegistry for DefaultListableBeanFactory {
 
     fn get_bean_definition(&self, bean_name: &str) -> Option<&dyn BeanDefinition> {
         let bean_map = self.bean_definition_map.read().unwrap();
-        bean_map
-            .get(bean_name)
-            .map(|definition| {
-                let ptr: *const dyn BeanDefinition = definition.as_ref();
-                // SAFETY: callers only use this transiently, matching the previous API contract.
-                unsafe { &*ptr }
-            })
+        bean_map.get(bean_name).map(|definition| {
+            let ptr: *const dyn BeanDefinition = definition.as_ref();
+            // SAFETY: callers only use this transiently, matching the previous API contract.
+            unsafe { &*ptr }
+        })
     }
 
     fn get_bean_definition_count(&self) -> usize {
@@ -49,8 +47,16 @@ impl BeanDefinitionRegistry for DefaultListableBeanFactory {
 
     fn is_bean_name_in_use(&self, bean_name: &str) -> bool {
         BeanDefinitionRegistry::contains_bean_definition(self, bean_name)
-            || self.singleton_objects.read().unwrap().contains_key(bean_name)
-            || self.currently_in_creation.lock().unwrap().contains(bean_name)
+            || self
+                .singleton_objects
+                .read()
+                .unwrap()
+                .contains_key(bean_name)
+            || self
+                .currently_in_creation
+                .lock()
+                .unwrap()
+                .contains(bean_name)
     }
 
     fn register_bean_definition(
@@ -115,7 +121,10 @@ impl BeanFactory for DefaultListableBeanFactory {
         {
             let mut creating = self.currently_in_creation.lock().unwrap();
             if creating.contains(name) {
-                eprintln!("[spring-beans] circular dependency detected at bean '{}'", name);
+                eprintln!(
+                    "[spring-beans] circular dependency detected at bean '{}'",
+                    name
+                );
                 return None;
             }
             creating.insert(name.to_string());
@@ -137,11 +146,19 @@ impl BeanFactory for DefaultListableBeanFactory {
             let singletons = self.singleton_objects.read().unwrap();
             dependencies
                 .iter()
-                .filter_map(|dep_name| singletons.get(dep_name).cloned().map(|b| (dep_name.clone(), b)))
+                .filter_map(|dep_name| {
+                    singletons
+                        .get(dep_name)
+                        .cloned()
+                        .map(|b| (dep_name.clone(), b))
+                })
                 .collect()
         };
 
-        if dependencies.iter().any(|dep| !deps_snapshot.contains_key(dep)) {
+        if dependencies
+            .iter()
+            .any(|dep| !deps_snapshot.contains_key(dep))
+        {
             eprintln!(
                 "[spring-beans] bean '{}' creation aborted: unresolved dependencies {:?}",
                 name, dependencies

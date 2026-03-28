@@ -4,7 +4,7 @@ use mysql::prelude::Queryable;
 use mysql::{Pool, PooledConn, Row};
 use serde::{Deserialize, Serialize};
 use spring_boot::web::{HttpRequest, HttpResponse};
-use spring_boot::{Application, ApplicationContext, PostMapping, Component, HttpServer};
+use spring_boot::{Application, ApplicationContext, Component, HttpServer, PostMapping};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Request/Response models (match Java contract)
@@ -140,17 +140,20 @@ fn is_admin(p: &Principal) -> bool {
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn parse_offset_datetime_to_shanghai_naive(s: &str) -> Result<NaiveDateTime, String> {
-    let dt: DateTime<FixedOffset> = DateTime::parse_from_rfc3339(s)
-        .map_err(|e| format!("invalid datetime '{}': {}", s, e))?;
+    let dt: DateTime<FixedOffset> =
+        DateTime::parse_from_rfc3339(s).map_err(|e| format!("invalid datetime '{}': {}", s, e))?;
     let sh = dt.with_timezone(&Shanghai);
     Ok(sh.naive_local())
 }
 
 fn naive_to_rfc3339_shanghai(naive: NaiveDateTime) -> String {
-    let dt = Shanghai.from_local_datetime(&naive).single().unwrap_or_else(|| {
-        // fallback: pick earliest if ambiguous
-        Shanghai.from_local_datetime(&naive).earliest().unwrap()
-    });
+    let dt = Shanghai
+        .from_local_datetime(&naive)
+        .single()
+        .unwrap_or_else(|| {
+            // fallback: pick earliest if ambiguous
+            Shanghai.from_local_datetime(&naive).earliest().unwrap()
+        });
     dt.to_rfc3339()
 }
 
@@ -199,11 +202,7 @@ impl ActivityRepository {
         self.pool()?.get_conn().map_err(|e| e.to_string())
     }
 
-    fn count_filtered(
-        &self,
-        q: &NormalizedQuery,
-        exclude_hidden: bool,
-    ) -> Result<i64, String> {
+    fn count_filtered(&self, q: &NormalizedQuery, exclude_hidden: bool) -> Result<i64, String> {
         let mut conn = self.conn()?;
 
         let mut sql = String::from("SELECT COUNT(1) as cnt FROM activities");
@@ -213,7 +212,9 @@ impl ActivityRepository {
             sql.push_str(&where_sql);
         }
 
-        let row: Option<Row> = conn.exec_first(sql, mysql::Params::Named(params_map)).map_err(|e| e.to_string())?;
+        let row: Option<Row> = conn
+            .exec_first(sql, mysql::Params::Named(params_map))
+            .map_err(|e| e.to_string())?;
         let cnt: i64 = row
             .and_then(|r| mysql::from_row_opt::<(i64,)>(r).ok())
             .map(|t| t.0)
@@ -245,7 +246,9 @@ impl ActivityRepository {
         params_map.insert(b"limit".to_vec(), q.limit.into());
         params_map.insert(b"offset".to_vec(), q.offset.into());
 
-        let rows: Vec<Row> = conn.exec(sql, mysql::Params::Named(params_map)).map_err(|e| e.to_string())?;
+        let rows: Vec<Row> = conn
+            .exec(sql, mysql::Params::Named(params_map))
+            .map_err(|e| e.to_string())?;
         rows.into_iter().map(ActivityRow::try_from_row).collect()
     }
 
@@ -272,7 +275,9 @@ impl ActivityRepository {
         sql.push_str(" ORDER BY start_time DESC, id DESC LIMIT :limit");
         params_map.insert(b"limit".to_vec(), q.limit.into());
 
-        let rows: Vec<Row> = conn.exec(sql, mysql::Params::Named(params_map)).map_err(|e| e.to_string())?;
+        let rows: Vec<Row> = conn
+            .exec(sql, mysql::Params::Named(params_map))
+            .map_err(|e| e.to_string())?;
         rows.into_iter().map(ActivityRow::try_from_row).collect()
     }
 }
@@ -348,7 +353,8 @@ fn build_where_clause(
 ) -> (String, std::collections::HashMap<Vec<u8>, mysql::Value>) {
     // We build MyBatis-like dynamic conditions with named params.
     let mut clauses: Vec<String> = Vec::new();
-    let mut params_map: std::collections::HashMap<Vec<u8>, mysql::Value> = std::collections::HashMap::new();
+    let mut params_map: std::collections::HashMap<Vec<u8>, mysql::Value> =
+        std::collections::HashMap::new();
 
     let mut insert_param = |k: &'static str, v: mysql::Value| {
         params_map.insert(k.as_bytes().to_vec(), v);
@@ -396,7 +402,8 @@ fn build_where_clause(
     }
 
     if include_cursor_predicate {
-        if let (Some(cursor_time), Some(cursor_id)) = (q.cursor_start_time, q.cursor_id.as_deref()) {
+        if let (Some(cursor_time), Some(cursor_id)) = (q.cursor_start_time, q.cursor_id.as_deref())
+        {
             if !cursor_id.is_empty() {
                 clauses.push("(start_time < :cursorStartTime OR (start_time = :cursorStartTime AND id < :cursorId))".to_string());
                 insert_param("cursorStartTime", cursor_time.into());
@@ -424,7 +431,11 @@ struct ActivityQueryService {
 }
 
 impl ActivityQueryService {
-    fn query(&self, raw: ActivityQueryRequest, principal: Principal) -> Result<ActivityPageResponse, String> {
+    fn query(
+        &self,
+        raw: ActivityQueryRequest,
+        principal: Principal,
+    ) -> Result<ActivityPageResponse, String> {
         let normalized = normalize_query(raw)?;
 
         let use_all = compute_use_all_raw(&normalized, &principal);
@@ -450,15 +461,19 @@ impl ActivityQueryService {
             rows.truncate(page_size as usize);
         }
 
-        let (next_cursor_start_time, next_cursor_id) = if normalized.use_cursor && has_more && !rows.is_empty() {
-            let last = rows.last().unwrap();
-            let nct = last.start_time.map(naive_to_rfc3339_shanghai);
-            (nct, Some(last.id.clone()))
-        } else {
-            (None, None)
-        };
+        let (next_cursor_start_time, next_cursor_id) =
+            if normalized.use_cursor && has_more && !rows.is_empty() {
+                let last = rows.last().unwrap();
+                let nct = last.start_time.map(naive_to_rfc3339_shanghai);
+                (nct, Some(last.id.clone()))
+            } else {
+                (None, None)
+            };
 
-        let items = rows.into_iter().map(ActivityItemResponse::from_row).collect();
+        let items = rows
+            .into_iter()
+            .map(ActivityItemResponse::from_row)
+            .collect();
 
         Ok(ActivityPageResponse {
             items,
@@ -515,7 +530,9 @@ fn normalize_query(raw: ActivityQueryRequest) -> Result<NormalizedQuery, String>
         Some(s) if !s.is_empty() => Some(parse_offset_datetime_to_shanghai_naive(s)?),
         _ => None,
     };
-    let cursor_id = raw.cursor_id.and_then(|s| if s.trim().is_empty() { None } else { Some(s) });
+    let cursor_id = raw
+        .cursor_id
+        .and_then(|s| if s.trim().is_empty() { None } else { Some(s) });
 
     let use_cursor = cursor_start_time.is_some() && cursor_id.is_some();
 
@@ -574,7 +591,8 @@ impl ActivityItemResponse {
 #[PostMapping("/activities/query")]
 fn query_activities(service: &ActivityQueryService, req: &HttpRequest) -> HttpResponse {
     if !req.is_json() {
-        return HttpResponse::bad_request().json(r#"{"code":400,"message":"Content-Type must be application/json","data":null}"#);
+        return HttpResponse::bad_request()
+            .json(r#"{"code":400,"message":"Content-Type must be application/json","data":null}"#);
     }
 
     let principal = principal_from_headers(req);
@@ -594,7 +612,9 @@ fn query_activities(service: &ActivityQueryService, req: &HttpRequest) -> HttpRe
     };
 
     match service.query(parsed, principal) {
-        Ok(page) => HttpResponse::ok().json(serde_json::to_string(&ResultEnvelope::success(page)).unwrap()),
+        Ok(page) => {
+            HttpResponse::ok().json(serde_json::to_string(&ResultEnvelope::success(page)).unwrap())
+        }
         Err(e) => HttpResponse::bad_request().json(
             serde_json::json!({
                 "code": 400,

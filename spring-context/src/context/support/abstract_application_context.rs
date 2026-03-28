@@ -12,7 +12,9 @@ pub struct AbstractApplicationContext {
 
 impl ConfigurableApplicationContext for AbstractApplicationContext {
     fn refresh(&mut self) {
-        let names = spring_beans::factory::BeanDefinitionRegistry::get_bean_definition_names(&self.bean_factory);
+        let names = spring_beans::factory::BeanDefinitionRegistry::get_bean_definition_names(
+            &self.bean_factory,
+        );
         for name in names {
             if let Some(definition) = self.bean_factory.get_bean_definition(&name) {
                 if !definition.is_lazy_init() && definition.get_scope() == BeanScope::Singleton {
@@ -46,7 +48,10 @@ impl ApplicationContext for AbstractApplicationContext {
         self.bean_factory.contains_bean(name)
     }
 
-    fn do_create_bean(&self, name: &str) -> Option<crate::context::application_context::SharedBean> {
+    fn do_create_bean(
+        &self,
+        name: &str,
+    ) -> Option<crate::context::application_context::SharedBean> {
         self.bean_factory.do_create_bean(name)
     }
 

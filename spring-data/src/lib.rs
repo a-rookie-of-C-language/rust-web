@@ -5,8 +5,8 @@
 //! - [`InMemoryRepository<T>`]：基于 `HashMap` + 自动递增 u64 主键的内存实现
 
 use std::collections::HashMap;
-use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
 
 // ─────────────────────────────────────────────
 //  Repository trait

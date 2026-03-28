@@ -1,5 +1,5 @@
-use crate::factory::BeanFactory;
 use crate::factory::bean_factory::SharedBean;
+use crate::factory::BeanFactory;
 
 pub trait ConfigurableBeanFactory: BeanFactory {
     fn register_singleton(&mut self, _bean_name: &str, _singleton_object: SharedBean) {}

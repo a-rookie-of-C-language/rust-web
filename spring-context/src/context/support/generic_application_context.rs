@@ -27,7 +27,9 @@ impl BeanDefinitionRegistry for GenericApplicationContext {
     }
 
     fn get_bean_definition_names(&self) -> Vec<String> {
-        spring_beans::factory::support::BeanDefinitionRegistry::get_bean_definition_names(&self.bean_factory)
+        spring_beans::factory::support::BeanDefinitionRegistry::get_bean_definition_names(
+            &self.bean_factory,
+        )
     }
 
     fn is_bean_name_in_use(&self, bean_name: &str) -> bool {

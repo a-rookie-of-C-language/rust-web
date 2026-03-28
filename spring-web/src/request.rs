@@ -113,7 +113,9 @@ impl HttpRequest {
         })
     }
 
-    fn read_headers_blocking<R>(reader: &mut BufReader<R>) -> Result<HashMap<String, String>, String>
+    fn read_headers_blocking<R>(
+        reader: &mut BufReader<R>,
+    ) -> Result<HashMap<String, String>, String>
     where
         R: Read + ?Sized,
     {
@@ -136,7 +138,9 @@ impl HttpRequest {
         Ok(headers)
     }
 
-    async fn read_headers_async<R>(reader: &mut TokioBufReader<R>) -> Result<HashMap<String, String>, String>
+    async fn read_headers_async<R>(
+        reader: &mut TokioBufReader<R>,
+    ) -> Result<HashMap<String, String>, String>
     where
         R: AsyncRead + Unpin,
     {
@@ -160,7 +164,10 @@ impl HttpRequest {
         Ok(headers)
     }
 
-    fn read_body_blocking<R>(reader: &mut BufReader<R>, headers: &HashMap<String, String>) -> Result<Vec<u8>, String>
+    fn read_body_blocking<R>(
+        reader: &mut BufReader<R>,
+        headers: &HashMap<String, String>,
+    ) -> Result<Vec<u8>, String>
     where
         R: Read + ?Sized,
     {
@@ -178,7 +185,10 @@ impl HttpRequest {
         Ok(body)
     }
 
-    async fn read_body_async<R>(reader: &mut TokioBufReader<R>, headers: &HashMap<String, String>) -> Result<Vec<u8>, String>
+    async fn read_body_async<R>(
+        reader: &mut TokioBufReader<R>,
+        headers: &HashMap<String, String>,
+    ) -> Result<Vec<u8>, String>
     where
         R: AsyncRead + Unpin,
     {

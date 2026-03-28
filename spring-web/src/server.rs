@@ -39,32 +39,30 @@ impl HttpServer {
 
         for stream in listener.incoming() {
             match stream {
-                Ok(mut tcp_stream) => {
-                    match HttpRequest::parse(&mut tcp_stream) {
-                        Ok(mut req) => {
-                            println!(
-                                "[spring-web] {} {} from {}",
-                                req.method,
-                                req.path,
-                                tcp_stream
-                                    .peer_addr()
-                                    .map(|a| a.to_string())
-                                    .unwrap_or_else(|_| "?".to_string())
-                            );
+                Ok(mut tcp_stream) => match HttpRequest::parse(&mut tcp_stream) {
+                    Ok(mut req) => {
+                        println!(
+                            "[spring-web] {} {} from {}",
+                            req.method,
+                            req.path,
+                            tcp_stream
+                                .peer_addr()
+                                .map(|a| a.to_string())
+                                .unwrap_or_else(|_| "?".to_string())
+                        );
 
-                            let resp = router.dispatch(&mut req, &context);
+                        let resp = router.dispatch(&mut req, &context);
 
-                            println!("[spring-web] → {} ({}B body)", resp.status, resp.body.len());
+                        println!("[spring-web] → {} ({}B body)", resp.status, resp.body.len());
 
-                            if let Err(e) = resp.write_to(&mut tcp_stream) {
-                                eprintln!("[spring-web] write error: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("[spring-web] parse error: {}", e);
+                        if let Err(e) = resp.write_to(&mut tcp_stream) {
+                            eprintln!("[spring-web] write error: {}", e);
                         }
                     }
-                }
+                    Err(e) => {
+                        eprintln!("[spring-web] parse error: {}", e);
+                    }
+                },
                 Err(e) => {
                     eprintln!("[spring-web] accept error: {}", e);
                 }
@@ -92,7 +90,10 @@ impl HttpServer {
         });
     }
 
-    async fn run_tokio_async<C: ApplicationContext + 'static>(port: u16, context: C) -> Result<(), String> {
+    async fn run_tokio_async<C: ApplicationContext + 'static>(
+        port: u16,
+        context: C,
+    ) -> Result<(), String> {
         let addr = format!("0.0.0.0:{}", port);
         let listener = tokio::net::TcpListener::bind(&addr)
             .await

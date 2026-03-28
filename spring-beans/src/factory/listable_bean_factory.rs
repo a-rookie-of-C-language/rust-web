@@ -1,5 +1,5 @@
-use crate::factory::BeanFactory;
 use crate::factory::bean_factory::SharedBean;
+use crate::factory::BeanFactory;
 use std::any::TypeId;
 
 pub trait ListableBeanFactory: BeanFactory {
