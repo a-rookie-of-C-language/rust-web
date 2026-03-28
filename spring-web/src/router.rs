@@ -152,22 +152,23 @@ fn match_path(pattern: &str, actual: &str) -> Option<HashMap<String, String>> {
 mod tests {
     use std::any::Any;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     use super::match_path;
     use super::{Handler, RouteRegistration, Router};
     use crate::method::HttpMethod;
     use crate::request::HttpRequest;
     use crate::response::HttpResponse;
-    use spring_context::context::application_context::ApplicationContext;
+    use spring_context::context::application_context::{ApplicationContext, SharedBean};
 
     #[derive(Default)]
     struct TestContext {
-        beans: HashMap<String, Box<dyn Any>>,
+        beans: HashMap<String, SharedBean>,
     }
 
     impl ApplicationContext for TestContext {
-        fn get_bean(&self, name: &str) -> Option<&dyn Any> {
-            self.beans.get(name).map(|b| b.as_ref())
+        fn get_bean(&self, name: &str) -> Option<SharedBean> {
+            self.beans.get(name).cloned()
         }
 
         fn is_singleton(&self, _name: &str) -> bool {
@@ -178,7 +179,7 @@ mod tests {
             self.beans.contains_key(name)
         }
 
-        fn do_create_bean(&mut self, _name: &str) -> Option<&dyn Any> {
+        fn do_create_bean(&self, _name: &str) -> Option<SharedBean> {
             None
         }
     }
@@ -198,7 +199,10 @@ mod tests {
         HttpResponse::ok().text("hello")
     }
 
-    fn with_number(_req: &HttpRequest, bean: &dyn Any) -> HttpResponse {
+    fn with_number(
+        _req: &HttpRequest,
+        bean: &(dyn Any + Send + Sync),
+    ) -> HttpResponse {
         let Some(v) = bean.downcast_ref::<u32>() else {
             return HttpResponse::internal_error().text("type mismatch");
         };
@@ -265,7 +269,7 @@ mod tests {
         };
         let mut req = make_request(HttpMethod::GET, "/n");
         let mut ctx = TestContext::default();
-        ctx.beans.insert("n".to_string(), Box::new(7u32));
+        ctx.beans.insert("n".to_string(), Arc::new(7u32));
         let resp = router.dispatch(&mut req, &ctx);
         assert_eq!(resp.status.0, 200);
         assert_eq!(resp.body, b"num=7");
