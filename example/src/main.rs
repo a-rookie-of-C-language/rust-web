@@ -186,7 +186,7 @@ fn log_around(jp: &JoinPoint) {
 // ── main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
-    let mut context = Application::run();
+    let context = Application::run();
 
     // 1. 普通 singleton bean
     if let Some(bean) = context.get_bean("person") {

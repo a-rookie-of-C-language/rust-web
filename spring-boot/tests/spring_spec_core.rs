@@ -131,7 +131,7 @@ fn spring_core_spec_contract() {
     SPEC_AROUND_COUNT.store(0, Ordering::SeqCst);
 
     let _aspect_marker = SpecLogAspect;
-    let mut context = Application::run();
+    let context = Application::run();
 
     assert!(context.contains_bean("specEagerProbe"));
     assert_eq!(SPEC_EAGER_INITS.load(Ordering::SeqCst), 1);
