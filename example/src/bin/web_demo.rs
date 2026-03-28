@@ -177,7 +177,7 @@ fn main() {
     println!("\nSeeding initial products...");
     // 2. 手动向 repository 写入初始数据（通过 context.get_bean）
     if let Some(bean) = context.get_bean("productRepository") {
-        if let Some(repo) = bean.downcast_ref::<ProductRepository>() {
+        if let Some(repo) = bean.as_ref().downcast_ref::<ProductRepository>() {
             repo.save(Product::new("Rust Programming Language", 39.9, 100));
             repo.save(Product::new("Cargo Mug", 9.9, 50));
             repo.save(Product::new("Ferris Plush", 19.9, 200));
@@ -185,6 +185,6 @@ fn main() {
         }
     }
 
-    // 3. 启动 HTTP 服务（阻塞）
-    HttpServer::run(8080, context);
+    // 3. 启动 HTTP 服务（Tokio transport）
+    HttpServer::run_tokio(8081, context);
 }

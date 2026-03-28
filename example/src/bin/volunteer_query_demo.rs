@@ -1,5 +1,3 @@
-use std::env;
-
 use chrono::{DateTime, FixedOffset, NaiveDateTime, TimeZone};
 use chrono_tz::Asia::Shanghai;
 use mysql::prelude::Queryable;
@@ -171,29 +169,34 @@ struct DbConfig {
 }
 
 #[Component]
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 struct ActivityRepository {
-    pool: Pool,
+    #[autowired]
+    cfg: DbConfig,
+    pool: std::sync::Arc<std::sync::OnceLock<Pool>>,
 }
 
-impl Default for ActivityRepository {
-    fn default() -> Self {
-        // Pull DB url from property first (DbConfig will inject), but repository is created
-        // before we can read it from env injection easily in this framework.
-        // So fallback to env var; this bin is intended for benchmarking.
-        let url = env::var("VOLUNTEER_DB_URL").unwrap_or_default();
-        if url.is_empty() {
-            panic!("VOLUNTEER_DB_URL is required (e.g. mysql://user:pass@host:3306/db)");
+impl ActivityRepository {
+    fn pool(&self) -> Result<&Pool, String> {
+        if self.cfg.db_url.trim().is_empty() {
+            return Err(
+                "volunteer.db.url is required in application.properties (e.g. mysql://user:pass@host:3306/db)"
+                    .to_string(),
+            );
         }
-        let opts = mysql::Opts::from_url(&url).expect("parse VOLUNTEER_DB_URL");
-        let pool = Pool::new(opts).expect("create mysql pool");
-        Self { pool }
+
+        let db_url = self.cfg.db_url.clone();
+        Ok(self.pool.get_or_init(|| {
+            let opts = mysql::Opts::from_url(&db_url)
+                .unwrap_or_else(|e| panic!("parse volunteer.db.url: {}", e));
+            Pool::new(opts).unwrap_or_else(|e| panic!("create mysql pool: {}", e))
+        }))
     }
 }
 
 impl ActivityRepository {
     fn conn(&self) -> Result<PooledConn, String> {
-        self.pool.get_conn().map_err(|e| e.to_string())
+        self.pool()?.get_conn().map_err(|e| e.to_string())
     }
 
     fn count_filtered(
@@ -605,21 +608,17 @@ fn query_activities(service: &ActivityQueryService, req: &HttpRequest) -> HttpRe
 
 fn main() {
     println!("=== volunteer query demo ===");
-    println!("Env: set VOLUNTEER_DB_URL to connect MySQL");
 
     let context = Application::run();
 
-    // port: prefer env var (benchmark convenience), fallback to injected property via bean
-    let port = env::var("SERVER_PORT")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .or_else(|| {
-            context
-                .get_bean("dbConfig")
-                .and_then(|b| b.downcast_ref::<DbConfig>())
+    let port = context
+        .get_bean("dbConfig")
+        .and_then(|b| {
+            b.as_ref()
+                .downcast_ref::<DbConfig>()
                 .and_then(|cfg| u16::try_from(cfg.port).ok())
         })
         .unwrap_or(8081);
 
-    HttpServer::run(port, context);
+    HttpServer::run_tokio(port, context);
 }

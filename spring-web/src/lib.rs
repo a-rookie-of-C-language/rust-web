@@ -1,4 +1,4 @@
-//! spring-web — 基于 `std::net::TcpListener` 的轻量级 HTTP 服务器
+//! spring-web — 轻量级 HTTP 服务器
 //!
 //! 提供：
 //! - [`HttpMethod`] / [`StatusCode`] — HTTP 基础类型
@@ -6,7 +6,7 @@
 //! - [`HttpResponse`] — 链式构建响应（text / json / html / body）
 //! - [`RouteRegistration`] / [`Handler`] — `inventory` 路由注册表
 //! - [`Router`] — 路径匹配（支持 `{param}`）+ IoC bean 注入分发
-//! - [`HttpServer`] — 单线程 TCP 监听循环
+//! - [`HttpServer`] — blocking/std 与 tokio 两种启动入口
 
 pub mod method;
 pub mod request;

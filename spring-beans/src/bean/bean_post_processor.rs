@@ -1,4 +1,4 @@
-pub trait BeanPostProcessor {
+pub trait BeanPostProcessor: Send + Sync {
     fn post_process_before_initialization(&self, bean_name: &str, bean: &mut dyn std::any::Any);
     fn post_process_after_initialization(&self, bean_name: &str, bean: &mut dyn std::any::Any);
     fn order(&self) -> i32 {

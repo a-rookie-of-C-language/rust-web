@@ -79,11 +79,11 @@ pub fn component_impl(attribute: TokenStream, item: TokenStream) -> TokenStream 
                     #scope_token,
                     #lazy,
                     vec![#(#deps.to_string()),*],
-                    Box::new(|resolved_deps: &std::collections::HashMap<String, Box<dyn std::any::Any>>, env: &std::collections::HashMap<String, String>| {
+                    Box::new(|resolved_deps: &std::collections::HashMap<String, std::sync::Arc<dyn std::any::Any + Send + Sync>>, env: &std::collections::HashMap<String, String>| {
                         let mut instance = #ident::default();
                         #(#inject_stmts)*
                         #(#value_inject_stmts)*
-                        Box::new(instance) as Box<dyn std::any::Any>
+                        std::sync::Arc::new(instance) as std::sync::Arc<dyn std::any::Any + Send + Sync>
                     }),
                     #condition_token,
                 )
@@ -128,11 +128,11 @@ pub fn component_derive_impl(item: TokenStream) -> TokenStream {
                     spring_beans::factory::config::BeanScope::Singleton,
                     false,
                     vec![#(#deps.to_string()),*],
-                    Box::new(|resolved_deps: &std::collections::HashMap<String, Box<dyn std::any::Any>>, env: &std::collections::HashMap<String, String>| {
+                    Box::new(|resolved_deps: &std::collections::HashMap<String, std::sync::Arc<dyn std::any::Any + Send + Sync>>, env: &std::collections::HashMap<String, String>| {
                         let mut instance = #ident::default();
                         #(#inject_stmts)*
                         #(#value_inject_stmts)*
-                        Box::new(instance) as Box<dyn std::any::Any>
+                        std::sync::Arc::new(instance) as std::sync::Arc<dyn std::any::Any + Send + Sync>
                     }),
                     None,
                 )
@@ -176,7 +176,7 @@ fn build_inject_stmts(input: &ItemStruct) -> Vec<proc_macro2::TokenStream> {
             quote! {
                 instance.#field_ident = resolved_deps
                     .get(#bean_name_lit)
-                    .and_then(|b| b.downcast_ref::<#field_ty>())
+                    .and_then(|b| b.as_ref().downcast_ref::<#field_ty>())
                     .map(Clone::clone)
                     .unwrap_or_else(|| panic!(
                         "autowire failed: bean '{}' not found or type mismatch for field '{}'",

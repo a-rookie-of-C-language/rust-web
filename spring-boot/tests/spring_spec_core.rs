@@ -146,10 +146,13 @@ fn spring_core_spec_contract() {
     assert!(context.contains_bean("specPrototypeProbe"));
     assert!(!context.is_singleton("specPrototypeProbe"));
 
-    let user = context
+    let user_bean = context
         .get_bean("specUserService")
-        .and_then(|b| b.downcast_ref::<SpecUserService>())
-        .expect("specUserService should exist and type-match");
+        .expect("specUserService should exist");
+    let user = user_bean
+        .as_ref()
+        .downcast_ref::<SpecUserService>()
+        .expect("specUserService should type-match");
     assert_eq!(user.port, 8080);
     assert_eq!(user.answer, 42);
     assert_eq!(user.greeter.greeting, String::default());
@@ -157,16 +160,22 @@ fn spring_core_spec_contract() {
     assert!(context.get_bean("specConditionalCache").is_none());
     assert!(context.get_bean("specConditionalAnalytics").is_none());
 
-    let app_name = context
+    let app_name_bean = context
         .get_bean("specAppName")
-        .and_then(|b| b.downcast_ref::<String>())
         .expect("specAppName bean should be available");
+    let app_name = app_name_bean
+        .as_ref()
+        .downcast_ref::<String>()
+        .expect("specAppName should type-match");
     assert_eq!(app_name, "rust-spring-spec");
 
-    let repo = context
+    let repo_bean = context
         .get_bean("specProductRepository")
-        .and_then(|b| b.downcast_ref::<SpecProductRepository>())
         .expect("specProductRepository should exist");
+    let repo = repo_bean
+        .as_ref()
+        .downcast_ref::<SpecProductRepository>()
+        .expect("specProductRepository should type-match");
     let id1 = repo.save(SpecProduct::new("book", 39.9));
     let id2 = repo.save(SpecProduct::new("pen", 2.5));
     assert_eq!(repo.count(), 2);
@@ -180,25 +189,34 @@ fn spring_core_spec_contract() {
     assert!(repo.delete_by_id(id1));
     assert_eq!(repo.count(), 1);
 
-    let order_service = context
+    let order_service_bean = context
         .get_bean("specOrderService")
-        .and_then(|b| b.downcast_ref::<SpecOrderService>())
         .expect("specOrderService should exist");
+    let order_service = order_service_bean
+        .as_ref()
+        .downcast_ref::<SpecOrderService>()
+        .expect("specOrderService should type-match");
     let out = order_service.place_order("laptop");
     assert_eq!(out, "ordered:laptop");
     assert!(SPEC_BEFORE_COUNT.load(Ordering::SeqCst) >= 1);
     assert!(SPEC_AFTER_COUNT.load(Ordering::SeqCst) >= 1);
     assert!(SPEC_AROUND_COUNT.load(Ordering::SeqCst) >= 2);
 
-    let eager = context
+    let eager_bean = context
         .get_bean("specEagerProbe")
-        .and_then(|b| b.downcast_ref::<SpecEagerProbe>())
         .expect("specEagerProbe should be materialized");
+    let eager = eager_bean
+        .as_ref()
+        .downcast_ref::<SpecEagerProbe>()
+        .expect("specEagerProbe should type-match");
     assert_eq!(eager.id, 1);
 
-    let lazy = context
+    let lazy_bean = context
         .get_bean("specLazyProbe")
-        .and_then(|b| b.downcast_ref::<SpecLazyProbe>())
         .expect("specLazyProbe should be materialized after do_create_bean");
+    let lazy = lazy_bean
+        .as_ref()
+        .downcast_ref::<SpecLazyProbe>()
+        .expect("specLazyProbe should type-match");
     assert_eq!(lazy.id, 1);
 }

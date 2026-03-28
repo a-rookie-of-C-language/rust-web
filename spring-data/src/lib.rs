@@ -5,6 +5,8 @@
 //! - [`InMemoryRepository<T>`]：基于 `HashMap` + 自动递增 u64 主键的内存实现
 
 use std::collections::HashMap;
+use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // ─────────────────────────────────────────────
 //  Repository trait
@@ -12,14 +14,16 @@ use std::collections::HashMap;
 
 /// Spring Data 风格的 Repository 接口。
 /// 所有操作均通过实现此 trait 的具体类型暴露给用户。
-pub trait Repository<T> {
+pub trait Repository<T>: Send + Sync {
     /// 保存一条新记录，返回自动生成的 u64 主键。
     fn save(&self, entity: T) -> u64;
     /// 按 id 更新，返回是否存在该记录。
     fn update(&self, id: u64, entity: T) -> bool;
     /// 按主键查询（不可变引用通过回调方式返回结果）。
+    /// 注意：线程安全实现通常会在持有读锁期间调用闭包。
     fn find_by_id<R, F: FnOnce(Option<&T>) -> R>(&self, id: u64, f: F) -> R;
     /// 遍历所有记录，通过回调暴露 (id, &T)。
+    /// 注意：线程安全实现通常会在持有读锁期间调用闭包。
     fn for_each<F: FnMut(u64, &T)>(&self, f: F);
     /// 将所有记录克隆出来，以 Vec<(u64, T)> 形式返回（需要 T: Clone）。
     fn find_all_cloned(&self) -> Vec<(u64, T)>
@@ -39,19 +43,21 @@ pub trait Repository<T> {
 //  InMemoryRepository<T>
 // ─────────────────────────────────────────────
 
-/// 基于 `std::cell::RefCell<HashMap<u64, T>>` 的内存 Repository 实现。
-/// 使用自增 u64 主键；通过 `RefCell` 提供内部可变性，
-/// 以便在 `&self` 上调用写操作（契合 IoC 容器只保存 `&T`/`Box<dyn Any>` 的模式）。
+/// 基于 `RwLock<HashMap<u64, T>>` 的内存 Repository 实现。
+///
+/// - 用 `AtomicU64` 分配自增主键。
+/// - 读路径用读锁，写路径用写锁。
+/// - `find_by_id/for_each` 仍保留借用式 callback API（闭包执行期间持有读锁）。
 pub struct InMemoryRepository<T> {
-    store: std::cell::RefCell<HashMap<u64, T>>,
-    next_id: std::cell::Cell<u64>,
+    store: RwLock<HashMap<u64, T>>,
+    next_id: AtomicU64,
 }
 
 impl<T> InMemoryRepository<T> {
     pub fn new() -> Self {
         Self {
-            store: std::cell::RefCell::new(HashMap::new()),
-            next_id: std::cell::Cell::new(1),
+            store: RwLock::new(HashMap::new()),
+            next_id: AtomicU64::new(1),
         }
     }
 }
@@ -62,16 +68,15 @@ impl<T> Default for InMemoryRepository<T> {
     }
 }
 
-impl<T> Repository<T> for InMemoryRepository<T> {
+impl<T: Send + Sync> Repository<T> for InMemoryRepository<T> {
     fn save(&self, entity: T) -> u64 {
-        let id = self.next_id.get();
-        self.store.borrow_mut().insert(id, entity);
-        self.next_id.set(id + 1);
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.store.write().unwrap().insert(id, entity);
         id
     }
 
     fn update(&self, id: u64, entity: T) -> bool {
-        let mut store = self.store.borrow_mut();
+        let mut store = self.store.write().unwrap();
         if let std::collections::hash_map::Entry::Occupied(mut e) = store.entry(id) {
             e.insert(entity);
             true
@@ -81,12 +86,12 @@ impl<T> Repository<T> for InMemoryRepository<T> {
     }
 
     fn find_by_id<R, F: FnOnce(Option<&T>) -> R>(&self, id: u64, f: F) -> R {
-        let store = self.store.borrow();
+        let store = self.store.read().unwrap();
         f(store.get(&id))
     }
 
     fn for_each<F: FnMut(u64, &T)>(&self, mut f: F) {
-        let store = self.store.borrow();
+        let store = self.store.read().unwrap();
         let mut pairs: Vec<(u64, &T)> = store.iter().map(|(&k, v)| (k, v)).collect();
         pairs.sort_by_key(|(k, _)| *k);
         for (id, val) in pairs {
@@ -98,27 +103,27 @@ impl<T> Repository<T> for InMemoryRepository<T> {
     where
         T: Clone,
     {
-        let store = self.store.borrow();
+        let store = self.store.read().unwrap();
         let mut pairs: Vec<(u64, T)> = store.iter().map(|(&k, v)| (k, v.clone())).collect();
         pairs.sort_by_key(|(k, _)| *k);
         pairs
     }
 
     fn delete_by_id(&self, id: u64) -> bool {
-        self.store.borrow_mut().remove(&id).is_some()
+        self.store.write().unwrap().remove(&id).is_some()
     }
 
     fn delete_all(&self) {
-        self.store.borrow_mut().clear();
-        self.next_id.set(1);
+        self.store.write().unwrap().clear();
+        self.next_id.store(1, Ordering::Relaxed);
     }
 
     fn count(&self) -> usize {
-        self.store.borrow().len()
+        self.store.read().unwrap().len()
     }
 
     fn exists_by_id(&self, id: u64) -> bool {
-        self.store.borrow().contains_key(&id)
+        self.store.read().unwrap().contains_key(&id)
     }
 }
 

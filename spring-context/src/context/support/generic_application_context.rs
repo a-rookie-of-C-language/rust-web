@@ -26,8 +26,8 @@ impl BeanDefinitionRegistry for GenericApplicationContext {
         self.bean_factory.get_bean_definition_count()
     }
 
-    fn get_bean_definition_names(&self) -> &Vec<String> {
-        self.bean_factory.get_bean_definition_names()
+    fn get_bean_definition_names(&self) -> Vec<String> {
+        spring_beans::factory::support::BeanDefinitionRegistry::get_bean_definition_names(&self.bean_factory)
     }
 
     fn is_bean_name_in_use(&self, bean_name: &str) -> bool {

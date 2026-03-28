@@ -25,14 +25,17 @@ fn _touch_contract_fields(a: &SpecNeedsMissingDep, b: &SpecInvalidValueConfig) {
 #[test]
 fn required_contract_missing_autowired_dependency_rejects_bean() {
     let context = Application::run();
-    if let (Some(a), Some(b)) = (
-        context
-            .get_bean("specNeedsMissingDep")
-            .and_then(|x| x.downcast_ref::<SpecNeedsMissingDep>()),
-        context
-            .get_bean("specInvalidValueConfig")
-            .and_then(|x| x.downcast_ref::<SpecInvalidValueConfig>()),
-    ) {
+    let a = context.get_bean("specNeedsMissingDep").and_then(|x| {
+        x.as_ref()
+            .downcast_ref::<SpecNeedsMissingDep>()
+            .cloned()
+    });
+    let b = context.get_bean("specInvalidValueConfig").and_then(|x| {
+        x.as_ref()
+            .downcast_ref::<SpecInvalidValueConfig>()
+            .cloned()
+    });
+    if let (Some(a), Some(b)) = (a.as_ref(), b.as_ref()) {
         _touch_contract_fields(a, b);
     }
     assert!(

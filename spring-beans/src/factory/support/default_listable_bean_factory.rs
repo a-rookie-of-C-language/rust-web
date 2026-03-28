@@ -1,50 +1,56 @@
 use crate::bean::bean_post_processor_register::BeanPostProcessorRegistry;
 use crate::env::Environment;
+use crate::factory::bean_factory::SharedBean;
 use crate::factory::config::{BeanDefinition, BeanScope, ConfigurableBeanFactory};
 use crate::factory::listable_bean_factory::ListableBeanFactory;
 use crate::factory::BeanDefinitionRegistry;
 use crate::factory::BeanFactory;
 use spring_macro::data;
-use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::{Mutex, RwLock};
 
 #[data]
 pub struct DefaultListableBeanFactory {
-    bean_definition_map: HashMap<String, Box<dyn BeanDefinition>>,
-    bean_definition_names: Vec<String>,
-    singleton_objects: HashMap<String, Box<dyn Any>>,
-    early_singleton_objects: HashMap<String, Box<dyn Any>>,
-    singleton_factories: HashMap<String, Box<dyn Fn() -> Box<dyn Any>>>,
-    currently_in_creation: HashSet<String>,
+    bean_definition_map: RwLock<HashMap<String, Box<dyn BeanDefinition>>>,
+    bean_definition_names: RwLock<Vec<String>>,
+    singleton_objects: RwLock<HashMap<String, SharedBean>>,
+    currently_in_creation: Mutex<HashSet<String>>,
     post_processor_registry: BeanPostProcessorRegistry,
     environment: Environment,
 }
 
 impl BeanDefinitionRegistry for DefaultListableBeanFactory {
     fn contains_bean_definition(&self, bean_name: &str) -> bool {
-        self.bean_definition_map.contains_key(bean_name)
+        self.bean_definition_map
+            .read()
+            .unwrap()
+            .contains_key(bean_name)
     }
 
     fn get_bean_definition(&self, bean_name: &str) -> Option<&dyn BeanDefinition> {
-        self.bean_definition_map
+        let bean_map = self.bean_definition_map.read().unwrap();
+        bean_map
             .get(bean_name)
-            .map(|definition| definition.as_ref())
+            .map(|definition| {
+                let ptr: *const dyn BeanDefinition = definition.as_ref();
+                // SAFETY: callers only use this transiently, matching the previous API contract.
+                unsafe { &*ptr }
+            })
     }
 
     fn get_bean_definition_count(&self) -> usize {
-        self.bean_definition_map.len()
+        self.bean_definition_map.read().unwrap().len()
     }
 
-    fn get_bean_definition_names(&self) -> &Vec<String> {
-        &self.bean_definition_names
+    fn get_bean_definition_names(&self) -> Vec<String> {
+        self.bean_definition_names.read().unwrap().clone()
     }
 
     fn is_bean_name_in_use(&self, bean_name: &str) -> bool {
         BeanDefinitionRegistry::contains_bean_definition(self, bean_name)
-            || self.singleton_objects.contains_key(bean_name)
-            || self.singleton_factories.contains_key(bean_name)
-            || self.currently_in_creation.contains(bean_name)
+            || self.singleton_objects.read().unwrap().contains_key(bean_name)
+            || self.currently_in_creation.lock().unwrap().contains(bean_name)
     }
 
     fn register_bean_definition(
@@ -53,92 +59,101 @@ impl BeanDefinitionRegistry for DefaultListableBeanFactory {
         bean_definition: Box<dyn BeanDefinition>,
     ) {
         self.bean_definition_map
+            .write()
+            .unwrap()
             .insert(bean_name.to_string(), bean_definition);
-        self.bean_definition_names.push(bean_name.to_string());
+        self.bean_definition_names
+            .write()
+            .unwrap()
+            .push(bean_name.to_string());
     }
 
     fn remove_bean_definition(&mut self, bean_name: &str) {
-        self.bean_definition_map.remove(bean_name);
-        self.bean_definition_names.retain(|n| n != bean_name);
+        self.bean_definition_map.write().unwrap().remove(bean_name);
+        self.bean_definition_names
+            .write()
+            .unwrap()
+            .retain(|n| n != bean_name);
     }
 }
 
 impl BeanFactory for DefaultListableBeanFactory {
-    fn get_bean(&self, name: &str) -> Option<&dyn Any> {
-        self.singleton_objects.get(name).map(|boxed| boxed.as_ref())
+    fn get_bean(&self, name: &str) -> Option<SharedBean> {
+        self.singleton_objects.read().unwrap().get(name).cloned()
     }
 
     fn is_singleton(&self, name: &str) -> bool {
         self.bean_definition_map
+            .read()
+            .unwrap()
             .get(name)
             .map(|definition| definition.get_scope() == BeanScope::Singleton)
-            .unwrap_or_else(|| self.singleton_objects.contains_key(name))
+            .unwrap_or_else(|| self.singleton_objects.read().unwrap().contains_key(name))
     }
 
     fn contains_bean(&self, name: &str) -> bool {
-        self.bean_definition_map.contains_key(name) || self.singleton_objects.contains_key(name)
+        self.bean_definition_map.read().unwrap().contains_key(name)
+            || self.singleton_objects.read().unwrap().contains_key(name)
     }
 
-    fn do_create_bean(&mut self, name: &str) -> Option<&dyn std::any::Any> {
+    fn do_create_bean(&self, name: &str) -> Option<SharedBean> {
         let (dependencies, scope) = {
-            let Some(definition) = self.bean_definition_map.get(name) else {
-                self.currently_in_creation.remove(name);
+            let bean_map = self.bean_definition_map.read().unwrap();
+            let Some(definition) = bean_map.get(name) else {
+                self.currently_in_creation.lock().unwrap().remove(name);
                 return None;
             };
             (definition.get_dependencies(), definition.get_scope())
         };
-        // 如果是 Singleton 且已创建，直接返回缓存
-        if scope == BeanScope::Singleton && self.singleton_objects.contains_key(name) {
-            return self.singleton_objects.get(name).map(|b| b.as_ref());
+
+        if scope == BeanScope::Singleton {
+            if let Some(bean) = self.singleton_objects.read().unwrap().get(name).cloned() {
+                return Some(bean);
+            }
         }
 
-        if self.currently_in_creation.contains(name) {
-            eprintln!(
-                "[spring-beans] circular dependency detected at bean '{}'",
-                name
-            );
-            return None;
+        {
+            let mut creating = self.currently_in_creation.lock().unwrap();
+            if creating.contains(name) {
+                eprintln!("[spring-beans] circular dependency detected at bean '{}'", name);
+                return None;
+            }
+            creating.insert(name.to_string());
         }
-        self.currently_in_creation.insert(name.to_string());
-        // 先递归创建所有依赖
+
         for dep in &dependencies {
-            if self.currently_in_creation.contains(dep) {
+            if self.currently_in_creation.lock().unwrap().contains(dep) {
                 eprintln!(
                     "[spring-beans] circular dependency detected: {} -> {}",
                     name, dep
                 );
-                self.currently_in_creation.remove(name);
+                self.currently_in_creation.lock().unwrap().remove(name);
                 return None;
             }
             self.do_create_bean(dep);
         }
 
-        if dependencies
-            .iter()
-            .any(|dep| !self.singleton_objects.contains_key(dep))
-        {
+        let deps_snapshot: HashMap<String, SharedBean> = {
+            let singletons = self.singleton_objects.read().unwrap();
+            dependencies
+                .iter()
+                .filter_map(|dep_name| singletons.get(dep_name).cloned().map(|b| (dep_name.clone(), b)))
+                .collect()
+        };
+
+        if dependencies.iter().any(|dep| !deps_snapshot.contains_key(dep)) {
             eprintln!(
                 "[spring-beans] bean '{}' creation aborted: unresolved dependencies {:?}",
                 name, dependencies
             );
-            self.currently_in_creation.remove(name);
+            self.currently_in_creation.lock().unwrap().remove(name);
             return None;
         }
-        // 从 singleton_objects 收集依赖快照（拷贝其中的引用信息，实际指针仔然存于容器）
-        // 注意： supplier 闭包通过 &HashMap 读取依赖，调用 downcast_ref + clone 进行字段注入
-        let mut instance: Box<dyn Any> = {
-            // 临时收集依赖的引用 map，内容仅包含该 bean 声明的依赖项
-            let deps_snapshot: std::collections::HashMap<String, Box<dyn Any>> = dependencies
-                .iter()
-                .filter_map(|dep_name| {
-                    // 将依赖从容器暂时移出，供 supplier 闭包使用
-                    self.singleton_objects
-                        .remove(dep_name)
-                        .map(|b| (dep_name.clone(), b))
-                })
-                .collect();
-            let definition = self.bean_definition_map.get(name)?;
-            let inst = match catch_unwind(AssertUnwindSafe(|| {
+
+        let instance = {
+            let bean_map = self.bean_definition_map.read().unwrap();
+            let definition = bean_map.get(name)?;
+            match catch_unwind(AssertUnwindSafe(|| {
                 definition.create_instance(&deps_snapshot, &self.environment.as_map())
             })) {
                 Ok(instance) => instance,
@@ -147,87 +162,84 @@ impl BeanFactory for DefaultListableBeanFactory {
                         "[spring-beans] bean '{}' creation aborted due to supplier panic",
                         name
                     );
-                    for (dep_name, dep_bean) in deps_snapshot {
-                        self.singleton_objects.insert(dep_name, dep_bean);
-                    }
-                    self.currently_in_creation.remove(name);
+                    self.currently_in_creation.lock().unwrap().remove(name);
                     return None;
                 }
-            };
-            // 将依赖放回容器
-            for (dep_name, dep_bean) in deps_snapshot {
-                self.singleton_objects.insert(dep_name, dep_bean);
             }
-            inst
         };
-        // BeanPostProcessor: before initialization
-        self.post_processor_registry
-            .apply_before_initialization(name, instance.as_mut());
-        // BeanPostProcessor: after initialization
-        self.post_processor_registry
-            .apply_after_initialization(name, instance.as_mut());
+
         match scope {
             BeanScope::Singleton => {
-                self.singleton_objects.insert(name.to_string(), instance);
-                self.currently_in_creation.remove(name);
-                self.singleton_objects.get(name).map(|b| b.as_ref())
+                self.singleton_objects
+                    .write()
+                    .unwrap()
+                    .insert(name.to_string(), instance.clone());
+                self.currently_in_creation.lock().unwrap().remove(name);
+                Some(instance)
             }
             BeanScope::Prototype => {
-                // Prototype 不缓存，每次调用都创建新实例
-                self.currently_in_creation.remove(name);
-                None
+                self.currently_in_creation.lock().unwrap().remove(name);
+                Some(instance)
             }
         }
     }
-} // impl BeanFactory
+}
+
 impl ConfigurableBeanFactory for DefaultListableBeanFactory {
-    fn register_singleton(&mut self, bean_name: &str, singleton_object: Box<dyn Any>) {
+    fn register_singleton(&mut self, bean_name: &str, singleton_object: SharedBean) {
         self.singleton_objects
+            .write()
+            .unwrap()
             .insert(bean_name.to_string(), singleton_object);
     }
 
     fn destroy_singleton(&mut self, bean_name: &str) {
-        self.singleton_objects.remove(bean_name);
+        self.singleton_objects.write().unwrap().remove(bean_name);
     }
 
     fn destroy_singletons(&mut self) {
-        self.singleton_objects.clear();
-        self.early_singleton_objects.clear();
-        self.singleton_factories.clear();
-        self.currently_in_creation.clear();
+        self.singleton_objects.write().unwrap().clear();
+        self.currently_in_creation.lock().unwrap().clear();
     }
 }
 
 impl ListableBeanFactory for DefaultListableBeanFactory {
     fn contains_bean_definition(&self, name: &str) -> bool {
-        self.bean_definition_map.contains_key(name)
+        self.bean_definition_map.read().unwrap().contains_key(name)
     }
 
     fn get_bean_definition_count(&self) -> usize {
-        self.bean_definition_map.len()
+        self.bean_definition_map.read().unwrap().len()
     }
 
     fn get_bean_definition_names(&self) -> Vec<String> {
-        self.bean_definition_names.clone()
+        self.bean_definition_names.read().unwrap().clone()
     }
 
     fn get_bean_names_for_type<T>(&self, type_id: std::any::TypeId) -> Vec<String> {
         self.bean_definition_map
+            .read()
+            .unwrap()
             .iter()
             .filter(|(_, bd)| bd.as_ref().get_type_id() == type_id)
             .map(|(name, _)| name.clone())
             .collect::<Vec<_>>()
     }
 
-    fn get_beans_of_type<T: 'static>(&self) -> Vec<&T> {
+    fn get_beans_of_type<T: 'static>(&self) -> Vec<SharedBean> {
         self.singleton_objects
-            .iter()
-            .filter_map(|(_, obj)| obj.as_ref().downcast_ref::<T>())
-            .collect::<Vec<_>>()
+            .read()
+            .unwrap()
+            .values()
+            .filter(|obj| obj.as_ref().downcast_ref::<T>().is_some())
+            .cloned()
+            .collect()
     }
 
     fn get_bean_definition_names_for_annotation(&self, annotation: &str) -> Vec<String> {
         self.bean_definition_map
+            .read()
+            .unwrap()
             .iter()
             .filter(|(_, bd)| bd.as_ref().has_annotation(annotation))
             .map(|(name, _)| name.clone())
@@ -238,12 +250,10 @@ impl ListableBeanFactory for DefaultListableBeanFactory {
 impl DefaultListableBeanFactory {
     pub fn new() -> Self {
         Self {
-            bean_definition_map: HashMap::new(),
-            bean_definition_names: Vec::new(),
-            singleton_objects: HashMap::new(),
-            early_singleton_objects: HashMap::new(),
-            singleton_factories: HashMap::new(),
-            currently_in_creation: HashSet::new(),
+            bean_definition_map: RwLock::new(HashMap::new()),
+            bean_definition_names: RwLock::new(Vec::new()),
+            singleton_objects: RwLock::new(HashMap::new()),
+            currently_in_creation: Mutex::new(HashSet::new()),
             post_processor_registry: BeanPostProcessorRegistry::new(),
             environment: Environment::new(),
         }
@@ -251,7 +261,7 @@ impl DefaultListableBeanFactory {
 
     pub fn register_post_processor(
         &mut self,
-        processor: Box<dyn crate::bean::bean_post_processor::BeanPostProcessor>,
+        processor: Box<dyn crate::bean::bean_post_processor::BeanPostProcessor + Send + Sync>,
     ) {
         self.post_processor_registry.register(processor);
     }

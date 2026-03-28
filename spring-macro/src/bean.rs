@@ -63,9 +63,9 @@ pub fn bean_impl(attribute: TokenStream, item: TokenStream) -> TokenStream {
                         #scope_token,
                         #lazy,
                         vec![],  // @Bean 方法的依赖通过手动调用容器 API 解析（暂不自动推断）
-                        Box::new(|_resolved_deps: &std::collections::HashMap<String, Box<dyn std::any::Any>>, _env: &std::collections::HashMap<String, String>| {
+                        Box::new(|_resolved_deps: &std::collections::HashMap<String, std::sync::Arc<dyn std::any::Any + Send + Sync>>, _env: &std::collections::HashMap<String, String>| {
                             let instance = #fn_ident();
-                            Box::new(instance) as Box<dyn std::any::Any>
+                            std::sync::Arc::new(instance) as std::sync::Arc<dyn std::any::Any + Send + Sync>
                         }),
                         None,
                     )
