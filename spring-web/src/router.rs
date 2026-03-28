@@ -14,7 +14,7 @@ use crate::response::HttpResponse;
 pub type PlainHandlerFn = fn(&HttpRequest) -> HttpResponse;
 
 /// 带 bean 注入的路由处理函数: fn(req, bean_any) -> HttpResponse
-pub type BeanHandlerFn = fn(&HttpRequest, &dyn std::any::Any) -> HttpResponse;
+pub type BeanHandlerFn = fn(&HttpRequest, &(dyn std::any::Any + Send + Sync)) -> HttpResponse;
 
 /// 路由处理器的两种形式
 pub enum Handler {
@@ -86,7 +86,7 @@ impl Router {
                 return match &route.handler {
                     Handler::Plain(f) => f(req),
                     Handler::WithBean { bean_name, f } => match context.get_bean(bean_name) {
-                        Some(bean) => f(req, bean),
+                        Some(bean) => f(req, bean.as_ref()),
                         None => HttpResponse::internal_error().text(format!(
                             "[spring-web] bean '{}' not found in IoC container",
                             bean_name

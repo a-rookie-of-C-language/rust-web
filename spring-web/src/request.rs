@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
 
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader as TokioBufReader};
+
 use crate::method::HttpMethod;
 
 /// 一个完整的 HTTP 请求
@@ -25,10 +27,23 @@ impl HttpRequest {
     /// 从 TcpStream 读取并解析一个 HTTP/1.x 请求。
     /// 使用 BufReader 逐行读取头部，然后按 Content-Length 读取 body。
     pub fn parse(stream: &mut TcpStream) -> Result<Self, String> {
-        // 将 &mut TcpStream 包在 BufReader 里，方便逐行读取
         let mut reader = BufReader::new(stream as &mut dyn Read);
+        Self::parse_from_blocking_reader(&mut reader)
+    }
 
-        // 1. 读请求行  "GET /path?q=1 HTTP/1.1"
+    /// 从异步 reader 读取并解析一个 HTTP/1.x 请求。
+    pub async fn parse_async<R>(reader: &mut R) -> Result<Self, String>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut reader = TokioBufReader::new(reader);
+        Self::parse_from_async_reader(&mut reader).await
+    }
+
+    fn parse_from_blocking_reader<R>(reader: &mut BufReader<R>) -> Result<Self, String>
+    where
+        R: Read + ?Sized,
+    {
         let mut request_line = String::new();
         reader
             .read_line(&mut request_line)
@@ -42,16 +57,68 @@ impl HttpRequest {
         let mut parts = request_line.splitn(3, ' ');
         let method_str = parts.next().unwrap_or("");
         let full_path = parts.next().unwrap_or("/");
-        // HTTP version 暂不校验
 
         let method = method_str
             .parse::<HttpMethod>()
             .map_err(|_| format!("unsupported method: {}", method_str))?;
 
-        // 2. 分离 path 和 query string
         let (path, query) = Self::split_path_query(full_path);
+        let headers = Self::read_headers_blocking(reader)?;
+        let body = Self::read_body_blocking(reader, &headers)?;
 
-        // 3. 读请求头，遇到空行（\r\n）停止
+        Ok(HttpRequest {
+            method,
+            path,
+            query,
+            headers,
+            body,
+            path_params: HashMap::new(),
+        })
+    }
+
+    async fn parse_from_async_reader<R>(reader: &mut TokioBufReader<R>) -> Result<Self, String>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut request_line = String::new();
+        reader
+            .read_line(&mut request_line)
+            .await
+            .map_err(|e| format!("read request line: {}", e))?;
+        let request_line = request_line.trim_end_matches(['\r', '\n']);
+
+        if request_line.is_empty() {
+            return Err("empty request line".to_string());
+        }
+
+        let mut parts = request_line.splitn(3, ' ');
+        let method_str = parts.next().unwrap_or("");
+        let full_path = parts.next().unwrap_or("/");
+
+        let method = method_str
+            .parse::<HttpMethod>()
+            .map_err(|_| format!("unsupported method: {}", method_str))?;
+
+        let (path, query) = Self::split_path_query(full_path);
+        let headers = Self::read_headers_async(reader).await?;
+        let body = Self::read_body_async(reader, &headers).await?;
+
+        Ok(HttpRequest {
+            method,
+            path,
+            query,
+            headers,
+            body,
+            path_params: HashMap::new(),
+        })
+    }
+
+    fn read_headers_blocking<R>(
+        reader: &mut BufReader<R>,
+    ) -> Result<HashMap<String, String>, String>
+    where
+        R: Read + ?Sized,
+    {
         let mut headers = HashMap::new();
         loop {
             let mut line = String::new();
@@ -60,17 +127,50 @@ impl HttpRequest {
                 .map_err(|e| format!("read header: {}", e))?;
             let line = line.trim_end_matches(['\r', '\n']);
             if line.is_empty() {
-                break; // 头部结束空行
+                break;
             }
-            // "Header-Name: value"
             if let Some(colon) = line.find(':') {
                 let key = line[..colon].trim().to_lowercase();
                 let value = line[colon + 1..].trim().to_string();
                 headers.insert(key, value);
             }
         }
+        Ok(headers)
+    }
 
-        // 4. 读 body（按 Content-Length）
+    async fn read_headers_async<R>(
+        reader: &mut TokioBufReader<R>,
+    ) -> Result<HashMap<String, String>, String>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut headers = HashMap::new();
+        loop {
+            let mut line = String::new();
+            reader
+                .read_line(&mut line)
+                .await
+                .map_err(|e| format!("read header: {}", e))?;
+            let line = line.trim_end_matches(['\r', '\n']);
+            if line.is_empty() {
+                break;
+            }
+            if let Some(colon) = line.find(':') {
+                let key = line[..colon].trim().to_lowercase();
+                let value = line[colon + 1..].trim().to_string();
+                headers.insert(key, value);
+            }
+        }
+        Ok(headers)
+    }
+
+    fn read_body_blocking<R>(
+        reader: &mut BufReader<R>,
+        headers: &HashMap<String, String>,
+    ) -> Result<Vec<u8>, String>
+    where
+        R: Read + ?Sized,
+    {
         let content_length: usize = headers
             .get("content-length")
             .and_then(|v| v.trim().parse().ok())
@@ -82,15 +182,29 @@ impl HttpRequest {
                 .read_exact(&mut body)
                 .map_err(|e| format!("read body: {}", e))?;
         }
+        Ok(body)
+    }
 
-        Ok(HttpRequest {
-            method,
-            path,
-            query,
-            headers,
-            body,
-            path_params: HashMap::new(),
-        })
+    async fn read_body_async<R>(
+        reader: &mut TokioBufReader<R>,
+        headers: &HashMap<String, String>,
+    ) -> Result<Vec<u8>, String>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let content_length: usize = headers
+            .get("content-length")
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(0);
+
+        let mut body = vec![0u8; content_length];
+        if content_length > 0 {
+            reader
+                .read_exact(&mut body)
+                .await
+                .map_err(|e| format!("read body: {}", e))?;
+        }
+        Ok(body)
     }
 
     /// 获取路径参数（由 Router 在路由匹配后填充）。

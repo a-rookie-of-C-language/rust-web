@@ -190,7 +190,7 @@ fn main() {
 
     // 1. 普通 singleton bean
     if let Some(bean) = context.get_bean("person") {
-        if let Some(person) = bean.downcast_ref::<Person>() {
+        if let Some(person) = bean.as_ref().downcast_ref::<Person>() {
             println!(
                 "[Singleton]  person bean: id={}, name='{}'",
                 person.id, person.name
@@ -200,7 +200,7 @@ fn main() {
 
     // 2. autowired 注入
     if let Some(bean) = context.get_bean("user") {
-        if let Some(user) = bean.downcast_ref::<User>() {
+        if let Some(user) = bean.as_ref().downcast_ref::<User>() {
             println!(
                 "[Autowired]  user bean:   id={}, name='{}', person='{}'",
                 user.id, user.name, user.person.name
@@ -225,7 +225,7 @@ fn main() {
         context.do_create_bean("heavyService");
     }
     if let Some(bean) = context.get_bean("heavyService") {
-        if let Some(svc) = bean.downcast_ref::<HeavyService>() {
+        if let Some(svc) = bean.as_ref().downcast_ref::<HeavyService>() {
             println!(
                 "[Lazy]       heavyService initialized: initialized={}",
                 svc.initialized
@@ -235,7 +235,7 @@ fn main() {
 
     // 5. @Bean 函数式定义
     if let Some(bean) = context.get_bean("appConfig") {
-        if let Some(cfg) = bean.downcast_ref::<AppConfig>() {
+        if let Some(cfg) = bean.as_ref().downcast_ref::<AppConfig>() {
             println!(
                 "[Bean]       appConfig: version={}, max_connections={}",
                 cfg.version, cfg.max_connections
@@ -245,14 +245,14 @@ fn main() {
 
     // 6. #[Value] 配置注入
     if let Some(bean) = context.get_bean("serverConfig") {
-        if let Some(cfg) = bean.downcast_ref::<ServerConfig>() {
+        if let Some(cfg) = bean.as_ref().downcast_ref::<ServerConfig>() {
             println!("[Value]      serverConfig: {:?}", cfg);
         }
     }
 
     // 6b. #[Value("#{...}")] SpEL 表达式注入
     if let Some(bean) = context.get_bean("spelConfig") {
-        if let Some(cfg) = bean.downcast_ref::<SpelConfig>() {
+        if let Some(cfg) = bean.as_ref().downcast_ref::<SpelConfig>() {
             println!(
                 "[SpEL]       double_port (port*2 if >8000): {}",
                 cfg.double_port
@@ -272,7 +272,7 @@ fn main() {
     // 7. AOP 切面拦截演示
     let _aspect_marker = LogAspect;
     if let Some(bean) = context.get_bean("orderService") {
-        if let Some(svc) = bean.downcast_ref::<OrderService>() {
+        if let Some(svc) = bean.as_ref().downcast_ref::<OrderService>() {
             println!("\n[AOP] Calling orderService.place_order(\"laptop\")...");
             svc.place_order("laptop");
         }
@@ -282,8 +282,8 @@ fn main() {
     println!("\n[Conditional]");
     // CacheService: feature.cache.enabled=true -> 应该被注册
     match context.get_bean("cacheService") {
-        Some(bean) if bean.downcast_ref::<CacheService>().is_some() => {
-            let svc = bean.downcast_ref::<CacheService>().unwrap();
+        Some(bean) if bean.as_ref().downcast_ref::<CacheService>().is_some() => {
+            let svc = bean.as_ref().downcast_ref::<CacheService>().unwrap();
             println!(
                 "  cacheService registered   (feature.cache.enabled=true):  ttl={}s",
                 svc.ttl

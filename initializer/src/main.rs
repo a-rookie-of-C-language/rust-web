@@ -195,13 +195,13 @@ fn main() {{
     let context = Application::run();
 
     if let Some(bean) = context.get_bean("helloService") {{
-        if let Some(svc) = bean.downcast_ref::<HelloService>() {{
+        if let Some(svc) = bean.as_ref().downcast_ref::<HelloService>() {{
             svc.say_hello("world");
         }}
     }}
 
     if let Some(bean) = context.get_bean("appConfig") {{
-        if let Some(cfg) = bean.downcast_ref::<AppConfig>() {{
+        if let Some(cfg) = bean.as_ref().downcast_ref::<AppConfig>() {{
             println!("[Config] app.name   = {{}}", cfg.app_name);
             println!("[Config] server.port = {{}}", cfg.port);
         }}
