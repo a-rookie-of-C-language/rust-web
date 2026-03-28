@@ -12,7 +12,7 @@ struct StarterConfig {
 fn main() {
     let context = Application::run();
     if let Some(bean) = context.get_bean("starterConfig") {
-        if let Some(cfg) = bean.downcast_ref::<StarterConfig>() {
+        if let Some(cfg) = bean.as_ref().downcast_ref::<StarterConfig>() {
             println!("app={} port={}", cfg.app_name, cfg.server_port);
         }
     }

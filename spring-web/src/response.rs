@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::net::TcpStream;
 
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+
 use crate::status::StatusCode;
 
 /// HTTP 响应构建器
@@ -117,25 +119,37 @@ impl HttpResponse {
 
     /// 将响应序列化为 HTTP/1.1 报文写入 TcpStream。
     pub fn write_to(&self, stream: &mut TcpStream) -> std::io::Result<()> {
-        // 状态行
-        let status_line = format!("HTTP/1.1 {} {}\r\n", self.status.0, self.status.reason());
-        stream.write_all(status_line.as_bytes())?;
-
-        // 固定头部
-        stream.write_all(b"Connection: close\r\n")?;
-
-        // 用户定义的头部
-        for (key, val) in &self.headers {
-            let header = format!("{}: {}\r\n", key, val);
-            stream.write_all(header.as_bytes())?;
-        }
-
-        // 空行
-        stream.write_all(b"\r\n")?;
-
-        // body
-        stream.write_all(&self.body)?;
+        stream.write_all(&self.encode())?;
         stream.flush()?;
         Ok(())
+    }
+
+    /// 将响应序列化为 HTTP/1.1 报文写入异步 writer。
+    pub async fn write_to_async<W>(&self, writer: &mut W) -> std::io::Result<()>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        writer.write_all(&self.encode()).await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(128 + self.body.len());
+
+        let status_line = format!("HTTP/1.1 {} {}\r\n", self.status.0, self.status.reason());
+        out.extend_from_slice(status_line.as_bytes());
+
+        out.extend_from_slice(b"Connection: close\r\n");
+
+        for (key, val) in &self.headers {
+            let header = format!("{}: {}\r\n", key, val);
+            out.extend_from_slice(header.as_bytes());
+        }
+
+        out.extend_from_slice(b"\r\n");
+        out.extend_from_slice(&self.body);
+
+        out
     }
 }

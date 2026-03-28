@@ -1,12 +1,10 @@
-use std::env;
-
 use chrono::{DateTime, FixedOffset, NaiveDateTime, TimeZone};
 use chrono_tz::Asia::Shanghai;
 use mysql::prelude::Queryable;
 use mysql::{Pool, PooledConn, Row};
 use serde::{Deserialize, Serialize};
 use spring_boot::web::{HttpRequest, HttpResponse};
-use spring_boot::{Application, ApplicationContext, PostMapping, Component, HttpServer};
+use spring_boot::{Application, ApplicationContext, Component, HttpServer, PostMapping};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Request/Response models (match Java contract)
@@ -142,17 +140,20 @@ fn is_admin(p: &Principal) -> bool {
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn parse_offset_datetime_to_shanghai_naive(s: &str) -> Result<NaiveDateTime, String> {
-    let dt: DateTime<FixedOffset> = DateTime::parse_from_rfc3339(s)
-        .map_err(|e| format!("invalid datetime '{}': {}", s, e))?;
+    let dt: DateTime<FixedOffset> =
+        DateTime::parse_from_rfc3339(s).map_err(|e| format!("invalid datetime '{}': {}", s, e))?;
     let sh = dt.with_timezone(&Shanghai);
     Ok(sh.naive_local())
 }
 
 fn naive_to_rfc3339_shanghai(naive: NaiveDateTime) -> String {
-    let dt = Shanghai.from_local_datetime(&naive).single().unwrap_or_else(|| {
-        // fallback: pick earliest if ambiguous
-        Shanghai.from_local_datetime(&naive).earliest().unwrap()
-    });
+    let dt = Shanghai
+        .from_local_datetime(&naive)
+        .single()
+        .unwrap_or_else(|| {
+            // fallback: pick earliest if ambiguous
+            Shanghai.from_local_datetime(&naive).earliest().unwrap()
+        });
     dt.to_rfc3339()
 }
 
@@ -171,36 +172,37 @@ struct DbConfig {
 }
 
 #[Component]
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 struct ActivityRepository {
-    pool: Pool,
+    #[autowired]
+    cfg: DbConfig,
+    pool: std::sync::Arc<std::sync::OnceLock<Pool>>,
 }
 
-impl Default for ActivityRepository {
-    fn default() -> Self {
-        // Pull DB url from property first (DbConfig will inject), but repository is created
-        // before we can read it from env injection easily in this framework.
-        // So fallback to env var; this bin is intended for benchmarking.
-        let url = env::var("VOLUNTEER_DB_URL").unwrap_or_default();
-        if url.is_empty() {
-            panic!("VOLUNTEER_DB_URL is required (e.g. mysql://user:pass@host:3306/db)");
+impl ActivityRepository {
+    fn pool(&self) -> Result<&Pool, String> {
+        if self.cfg.db_url.trim().is_empty() {
+            return Err(
+                "volunteer.db.url is required in application.properties (e.g. mysql://user:pass@host:3306/db)"
+                    .to_string(),
+            );
         }
-        let opts = mysql::Opts::from_url(&url).expect("parse VOLUNTEER_DB_URL");
-        let pool = Pool::new(opts).expect("create mysql pool");
-        Self { pool }
+
+        let db_url = self.cfg.db_url.clone();
+        Ok(self.pool.get_or_init(|| {
+            let opts = mysql::Opts::from_url(&db_url)
+                .unwrap_or_else(|e| panic!("parse volunteer.db.url: {}", e));
+            Pool::new(opts).unwrap_or_else(|e| panic!("create mysql pool: {}", e))
+        }))
     }
 }
 
 impl ActivityRepository {
     fn conn(&self) -> Result<PooledConn, String> {
-        self.pool.get_conn().map_err(|e| e.to_string())
+        self.pool()?.get_conn().map_err(|e| e.to_string())
     }
 
-    fn count_filtered(
-        &self,
-        q: &NormalizedQuery,
-        exclude_hidden: bool,
-    ) -> Result<i64, String> {
+    fn count_filtered(&self, q: &NormalizedQuery, exclude_hidden: bool) -> Result<i64, String> {
         let mut conn = self.conn()?;
 
         let mut sql = String::from("SELECT COUNT(1) as cnt FROM activities");
@@ -210,7 +212,9 @@ impl ActivityRepository {
             sql.push_str(&where_sql);
         }
 
-        let row: Option<Row> = conn.exec_first(sql, mysql::Params::Named(params_map)).map_err(|e| e.to_string())?;
+        let row: Option<Row> = conn
+            .exec_first(sql, mysql::Params::Named(params_map))
+            .map_err(|e| e.to_string())?;
         let cnt: i64 = row
             .and_then(|r| mysql::from_row_opt::<(i64,)>(r).ok())
             .map(|t| t.0)
@@ -242,7 +246,9 @@ impl ActivityRepository {
         params_map.insert(b"limit".to_vec(), q.limit.into());
         params_map.insert(b"offset".to_vec(), q.offset.into());
 
-        let rows: Vec<Row> = conn.exec(sql, mysql::Params::Named(params_map)).map_err(|e| e.to_string())?;
+        let rows: Vec<Row> = conn
+            .exec(sql, mysql::Params::Named(params_map))
+            .map_err(|e| e.to_string())?;
         rows.into_iter().map(ActivityRow::try_from_row).collect()
     }
 
@@ -269,7 +275,9 @@ impl ActivityRepository {
         sql.push_str(" ORDER BY start_time DESC, id DESC LIMIT :limit");
         params_map.insert(b"limit".to_vec(), q.limit.into());
 
-        let rows: Vec<Row> = conn.exec(sql, mysql::Params::Named(params_map)).map_err(|e| e.to_string())?;
+        let rows: Vec<Row> = conn
+            .exec(sql, mysql::Params::Named(params_map))
+            .map_err(|e| e.to_string())?;
         rows.into_iter().map(ActivityRow::try_from_row).collect()
     }
 }
@@ -345,7 +353,8 @@ fn build_where_clause(
 ) -> (String, std::collections::HashMap<Vec<u8>, mysql::Value>) {
     // We build MyBatis-like dynamic conditions with named params.
     let mut clauses: Vec<String> = Vec::new();
-    let mut params_map: std::collections::HashMap<Vec<u8>, mysql::Value> = std::collections::HashMap::new();
+    let mut params_map: std::collections::HashMap<Vec<u8>, mysql::Value> =
+        std::collections::HashMap::new();
 
     let mut insert_param = |k: &'static str, v: mysql::Value| {
         params_map.insert(k.as_bytes().to_vec(), v);
@@ -393,7 +402,8 @@ fn build_where_clause(
     }
 
     if include_cursor_predicate {
-        if let (Some(cursor_time), Some(cursor_id)) = (q.cursor_start_time, q.cursor_id.as_deref()) {
+        if let (Some(cursor_time), Some(cursor_id)) = (q.cursor_start_time, q.cursor_id.as_deref())
+        {
             if !cursor_id.is_empty() {
                 clauses.push("(start_time < :cursorStartTime OR (start_time = :cursorStartTime AND id < :cursorId))".to_string());
                 insert_param("cursorStartTime", cursor_time.into());
@@ -421,7 +431,11 @@ struct ActivityQueryService {
 }
 
 impl ActivityQueryService {
-    fn query(&self, raw: ActivityQueryRequest, principal: Principal) -> Result<ActivityPageResponse, String> {
+    fn query(
+        &self,
+        raw: ActivityQueryRequest,
+        principal: Principal,
+    ) -> Result<ActivityPageResponse, String> {
         let normalized = normalize_query(raw)?;
 
         let use_all = compute_use_all_raw(&normalized, &principal);
@@ -447,15 +461,19 @@ impl ActivityQueryService {
             rows.truncate(page_size as usize);
         }
 
-        let (next_cursor_start_time, next_cursor_id) = if normalized.use_cursor && has_more && !rows.is_empty() {
-            let last = rows.last().unwrap();
-            let nct = last.start_time.map(naive_to_rfc3339_shanghai);
-            (nct, Some(last.id.clone()))
-        } else {
-            (None, None)
-        };
+        let (next_cursor_start_time, next_cursor_id) =
+            if normalized.use_cursor && has_more && !rows.is_empty() {
+                let last = rows.last().unwrap();
+                let nct = last.start_time.map(naive_to_rfc3339_shanghai);
+                (nct, Some(last.id.clone()))
+            } else {
+                (None, None)
+            };
 
-        let items = rows.into_iter().map(ActivityItemResponse::from_row).collect();
+        let items = rows
+            .into_iter()
+            .map(ActivityItemResponse::from_row)
+            .collect();
 
         Ok(ActivityPageResponse {
             items,
@@ -512,7 +530,9 @@ fn normalize_query(raw: ActivityQueryRequest) -> Result<NormalizedQuery, String>
         Some(s) if !s.is_empty() => Some(parse_offset_datetime_to_shanghai_naive(s)?),
         _ => None,
     };
-    let cursor_id = raw.cursor_id.and_then(|s| if s.trim().is_empty() { None } else { Some(s) });
+    let cursor_id = raw
+        .cursor_id
+        .and_then(|s| if s.trim().is_empty() { None } else { Some(s) });
 
     let use_cursor = cursor_start_time.is_some() && cursor_id.is_some();
 
@@ -571,7 +591,8 @@ impl ActivityItemResponse {
 #[PostMapping("/activities/query")]
 fn query_activities(service: &ActivityQueryService, req: &HttpRequest) -> HttpResponse {
     if !req.is_json() {
-        return HttpResponse::bad_request().json(r#"{"code":400,"message":"Content-Type must be application/json","data":null}"#);
+        return HttpResponse::bad_request()
+            .json(r#"{"code":400,"message":"Content-Type must be application/json","data":null}"#);
     }
 
     let principal = principal_from_headers(req);
@@ -591,7 +612,9 @@ fn query_activities(service: &ActivityQueryService, req: &HttpRequest) -> HttpRe
     };
 
     match service.query(parsed, principal) {
-        Ok(page) => HttpResponse::ok().json(serde_json::to_string(&ResultEnvelope::success(page)).unwrap()),
+        Ok(page) => {
+            HttpResponse::ok().json(serde_json::to_string(&ResultEnvelope::success(page)).unwrap())
+        }
         Err(e) => HttpResponse::bad_request().json(
             serde_json::json!({
                 "code": 400,
@@ -605,21 +628,17 @@ fn query_activities(service: &ActivityQueryService, req: &HttpRequest) -> HttpRe
 
 fn main() {
     println!("=== volunteer query demo ===");
-    println!("Env: set VOLUNTEER_DB_URL to connect MySQL");
 
     let context = Application::run();
 
-    // port: prefer env var (benchmark convenience), fallback to injected property via bean
-    let port = env::var("SERVER_PORT")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .or_else(|| {
-            context
-                .get_bean("dbConfig")
-                .and_then(|b| b.downcast_ref::<DbConfig>())
+    let port = context
+        .get_bean("dbConfig")
+        .and_then(|b| {
+            b.as_ref()
+                .downcast_ref::<DbConfig>()
                 .and_then(|cfg| u16::try_from(cfg.port).ok())
         })
         .unwrap_or(8081);
 
-    HttpServer::run(port, context);
+    HttpServer::run_tokio(port, context);
 }

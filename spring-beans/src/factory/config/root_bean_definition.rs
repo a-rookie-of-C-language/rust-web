@@ -1,10 +1,10 @@
-use super::bean_definition::{BeanDefinition, BeanScope};
+use super::bean_definition::{BeanDefinition, BeanScope, SharedBean};
 use spring_macro::{all_args_constructor, data};
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 
-type ResolvedDeps = std::collections::HashMap<String, Box<dyn Any>>;
+type ResolvedDeps = std::collections::HashMap<String, SharedBean>;
 type EnvMap = std::collections::HashMap<String, String>;
-type Supplier = dyn Fn(&ResolvedDeps, &EnvMap) -> Box<dyn Any>;
+type Supplier = dyn Fn(&ResolvedDeps, &EnvMap) -> SharedBean + Send + Sync;
 
 #[data]
 #[all_args_constructor]
@@ -51,9 +51,9 @@ impl BeanDefinition for RootBeanDefinition {
 
     fn create_instance(
         &self,
-        resolved_deps: &std::collections::HashMap<String, Box<dyn Any>>,
+        resolved_deps: &std::collections::HashMap<String, SharedBean>,
         env: &std::collections::HashMap<String, String>,
-    ) -> Box<dyn Any> {
+    ) -> SharedBean {
         (self.supplier)(resolved_deps, env)
     }
 

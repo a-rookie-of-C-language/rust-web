@@ -1,7 +1,7 @@
 use crate::bean::bean_post_processor::BeanPostProcessor;
 
 pub struct BeanPostProcessorRegistry {
-    processors: Vec<Box<dyn BeanPostProcessor>>,
+    processors: Vec<Box<dyn BeanPostProcessor + Send + Sync>>,
 }
 
 impl BeanPostProcessorRegistry {
@@ -16,7 +16,7 @@ impl BeanPostProcessorRegistry {
         self.processors.sort_by_key(|p| p.order());
     }
 
-    pub fn get_processors(&self) -> &Vec<Box<dyn BeanPostProcessor>> {
+    pub fn get_processors(&self) -> &Vec<Box<dyn BeanPostProcessor + Send + Sync>> {
         &self.processors
     }
 

@@ -124,9 +124,9 @@ pub fn repository_impl(attribute: TokenStream, item: TokenStream) -> TokenStream
                     spring_beans::factory::config::BeanScope::Singleton,
                     false,
                     vec![],
-                    Box::new(|_resolved_deps: &std::collections::HashMap<String, Box<dyn std::any::Any>>,
+                    Box::new(|_resolved_deps: &std::collections::HashMap<String, std::sync::Arc<dyn std::any::Any + Send + Sync>>,
                                _env: &std::collections::HashMap<String, String>| {
-                        Box::new(#struct_ident::default()) as Box<dyn std::any::Any>
+                        std::sync::Arc::new(#struct_ident::default()) as std::sync::Arc<dyn std::any::Any + Send + Sync>
                     }),
                     None,
                 )

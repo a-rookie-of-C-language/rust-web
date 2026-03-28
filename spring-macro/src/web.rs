@@ -103,7 +103,7 @@ fn mapping_impl(method: &str, attr: TokenStream, item: TokenStream) -> TokenStre
             quote! {
                 fn #wrapper_name(
                     req:  &spring_boot::web::HttpRequest,
-                    bean: &dyn std::any::Any,
+                    bean: &(dyn std::any::Any + Send + Sync),
                 ) -> spring_boot::web::HttpResponse {
                     if let Some(ctrl) = bean.downcast_ref::<#bean_type_ident>() {
                         #func_name(ctrl, req)

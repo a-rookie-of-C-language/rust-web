@@ -12,7 +12,7 @@ struct ProfileConfig {
 fn main() {
     let context = Application::run();
     if let Some(bean) = context.get_bean("profileConfig") {
-        if let Some(cfg) = bean.downcast_ref::<ProfileConfig>() {
+        if let Some(cfg) = bean.as_ref().downcast_ref::<ProfileConfig>() {
             println!("profile-demo app={} port={}", cfg.app_name, cfg.port);
         }
     }
